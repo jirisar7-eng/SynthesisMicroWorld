@@ -59,16 +59,17 @@ class Civilization {
     if(this.construction && this.construction.agentId===a.id){
       this.go(a,'build',this.construction,'Chce dokončit rozestavěný přístřešek.');return;
     }
-    const urgentFood=this.food<9;
+    const urgentFood=this.food<9+this.cooperation/20;
     const foragers=this.agents.filter(p=>p.id!==a.id && (p.purpose==='berries'||p.purpose==='returnfood')).length;
-    const gatherFood=(urgentFood && foragers<3) || (foragers<1) || (this.wood>7 && Math.random()<0.27);
+    const cooperativeSlots=Math.max(1,Math.round(this.cooperation/35));
+    const gatherFood=(urgentFood && foragers<cooperativeSlots) || (foragers<1 && this.cooperation>=35) || (this.wood>7 && Math.random()<0.27);
     const woods=this.trees.filter(t=>t.stock>0);
     const berry=this.closestAvailable(this.berries,a);
     const tree=this.closestAvailable(woods,a);
     if(gatherFood && berry){
       this.go(a,'berries',berry,urgentFood?'Zásoby potravy klesají. Rozhodl se hledat bobule.':'Zajišťuje zásoby potravy pro ostatní.',berry);return;
     }
-    if(tree && (this.shelters.length===0 || this.wood<25 || Math.random()*100>this.nature)){
+    if(tree && (this.shelters.length===0 || (this.wood<5 && Math.random()*100>this.nature/2) || (this.nature<70 && (this.wood<25 || Math.random()*100>this.nature)))){
       this.go(a,'wood',tree,'Osada potřebuje dřevo. Vybral si dostupný strom v okolí.',tree);return;
     }
     if(berry){this.go(a,'berries',berry,'Dává přednost šetrnému sběru potravy před těžbou.',berry);return;}
