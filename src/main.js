@@ -1021,11 +1021,19 @@ class Diorama {
     const cargoAnchor=new THREE.Group();
     cargoAnchor.position.set(0,1.03,.46);g.add(cargoAnchor);
     g.userData.cargoAnchor=cargoAnchor;
-    // A folded shirt-fabric sling supports berries and apples in the hands;
-    // this is not a free craftable basket or an invisible inventory container.
-    const support=this.mesh(new THREE.SphereGeometry(.31,10,7),
-      this.mat('#ae9979'),0,-.22,.14,false);
-    support.scale.set(1,.20,.65);
+    // A shallow cloth sling is VISIBLY under hand-carried food. Its material
+    // is wearable clothing, not a free craftable/teleported storage basket.
+    const support=new THREE.Group();
+    support.position.set(0,-.18,.14);
+    const cloth=this.mat('#b29c7a');
+    const sling=new THREE.Mesh(new THREE.CylinderGeometry(.39,.27,.28,14,1,true),cloth);
+    sling.position.y=-.04;sling.castShadow=true;support.add(sling);
+    const base=this.mesh(new THREE.CylinderGeometry(.275,.275,.035,14),
+      this.mat('#887456'),0,-.195,0,false);
+    support.add(base);
+    const rim=this.mesh(new THREE.TorusGeometry(.39,.04,7,16),
+      this.mat('#c5ad86'),0,.105,0,false);
+    rim.rotation.x=Math.PI/2;support.add(rim);
     cargoAnchor.add(support);
     support.visible=false;g.userData.cargoSupport=support;
     g.userData.carryClass='empty';
