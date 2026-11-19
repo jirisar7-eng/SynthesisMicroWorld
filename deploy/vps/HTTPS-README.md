@@ -56,7 +56,7 @@ cd ~/projects/SynthesisMicroWorld-VPS
 bash deploy/vps/https-apply.sh --apply
 ```
 
-This step **does mutate** Docker membership of the MicroWorld container and the shared Caddyfile. It asks for a strong **new** password at the terminal (min. 16 characters, echoed neither to terminal nor Git) and prompts for confirmation. Never send it to chat, GitHub, Notion or shell history.
+This step **does mutate** Docker membership of the MicroWorld container and the shared Caddyfile. It asks for a **new** password at the terminal (minimum 5 characters at the owner's explicit request, echoed neither to terminal nor Git) and prompts for confirmation. **Security caveat:** Five characters are easily brute-forced on a public-facing Basic Auth site, and the default Caddy Basic Auth handler does not implement account lockout; a longer random password or private-network-only access is recommended. Never send it to chat, GitHub, Notion or shell history.
 
 On success, the expected marker is:
 ```
