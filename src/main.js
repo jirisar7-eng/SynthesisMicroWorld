@@ -235,7 +235,8 @@ class Diorama {
     container.appendChild(this.renderer.domElement);
     this.camera=new THREE.PerspectiveCamera(47,1,.1,250);this.resetCamera();
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);this.controls.enableDamping=true;this.controls.dampingFactor=.07;this.controls.minDistance=13;this.controls.maxDistance=90;this.controls.maxPolarAngle=Math.PI*.46;this.controls.minPolarAngle=.22;this.controls.target.set(0,1.5,0);this.controls.enablePan=true;this.controls.screenSpacePanning=true;this.controls.maxTargetRadius=32;
-    this.scene.add(new THREE.HemisphereLight('#edffff','#768b68',2.4));
+    this.ambient=new THREE.HemisphereLight('#edffff','#768b68',2.4);this.scene.add(this.ambient);
+    this.clearSky=new THREE.Color('#c8dfdd');this.nightSky=new THREE.Color('#627c84');this.rainSky=new THREE.Color('#869a9b');
     const sun=new THREE.DirectionalLight('#ffeed6',3.5);sun.position.set(-20,43,24);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-49;sun.shadow.camera.right=49;sun.shadow.camera.top=49;sun.shadow.camera.bottom=-49;sun.shadow.camera.near=1;sun.shadow.camera.far=110;sun.shadow.bias=-.00022;this.scene.add(sun);this.sun=sun;
     const groundGeo=new THREE.PlaneGeometry(100,100,100,100);groundGeo.rotateX(-Math.PI/2);
     const pos=groundGeo.attributes.position,vertices=[];
@@ -246,7 +247,7 @@ class Diorama {
     }groundGeo.setAttribute('color',new THREE.Float32BufferAttribute(vertices,3));groundGeo.computeVertexNormals();
     const land=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide}));land.receiveShadow=true;this.scene.add(land);
     const water=new THREE.Mesh(new THREE.PlaneGeometry(190,190),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
-    this.addCamp();this.treeModels=[];this.addForest();this.addBerries();this.addRocksAndGrass();this.people=[];this.pickables=[];
+    this.addCamp();this.treeModels=[];this.addForest();this.addBerries();this.addRocksAndGrass();this.addRain();this.people=[];this.pickables=[];
     for(const agent of sim.agents){const group=this.makePerson(agent);this.scene.add(group);this.people.push(group);}
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
@@ -254,6 +255,18 @@ class Diorama {
     canvas.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
     canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];if(hit){chooseAgent(hit.object.userData.agentId);}});
     this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(container);this.resize();
+  }
+  addRain(){
+    const count=280,coords=new Float32Array(count*6);this.rainCoords=coords;
+    this.rainGeometry=new THREE.BufferGeometry();
+    this.rainGeometry.setAttribute('position',new THREE.BufferAttribute(coords,3));
+    for(let i=0;i<count;i++){
+      const x=rand(-25,25),z=rand(-25,25),y=rand(1,18),idx=i*6;
+      coords[idx]=x;coords[idx+1]=y;coords[idx+2]=z;
+      coords[idx+3]=x-.17;coords[idx+4]=y-.64;coords[idx+5]=z;
+    }
+    this.rain=new THREE.LineSegments(this.rainGeometry,new THREE.LineBasicMaterial({color:'#d8eff0',transparent:true,opacity:.53,depthWrite:false}));
+    this.rain.frustumCulled=false;this.rain.visible=false;this.scene.add(this.rain);
   }
   mat(color,roughness=1){return new THREE.MeshStandardMaterial({color,roughness});}
   mesh(geometry,material,x,y,z,cast=true){const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;return m;}
@@ -408,11 +421,24 @@ class Diorama {
   }
   makePerson(a){
     const g=new THREE.Group(),skin=this.mat('#e9c49f'),shirt=this.mat(a.color),pants=this.mat('#445d53'),hair=this.mat(a.id%2?'#584239':'#88664d');
-    g.add(this.mesh(new THREE.CylinderGeometry(.32,.39,.77,8),shirt,0,.95,0));
-    g.add(this.mesh(new THREE.SphereGeometry(.32,10,8),skin,0,1.61,0));
+    g.userData.legs=[];g.userData.arms=[];
+    const torso=this.mesh(new THREE.CylinderGeometry(.32,.39,.77,10),shirt,0,.95,0);g.add(torso);
+    const head=this.mesh(new THREE.SphereGeometry(.32,12,10),skin,0,1.61,0);g.add(head);
     const cap=this.mesh(new THREE.SphereGeometry(.32,10,8),hair,0,1.78,-.025);cap.scale.set(1,.48,1);g.add(cap);
-    for(const sign of [-1,1]){g.add(this.mesh(new THREE.CylinderGeometry(.12,.13,.5,7),pants,sign*.19,.38,0));g.add(this.mesh(new THREE.CylinderGeometry(.11,.11,.57,7),shirt,sign*.44,1.03,0));}
-    const halo=this.mesh(new THREE.RingGeometry(.55,.67,28),new THREE.MeshBasicMaterial({color:'#e8ffd1',side:THREE.DoubleSide,transparent:true,opacity:.85}),0,.11,0,false);halo.rotation.x=-Math.PI/2;halo.visible=false;g.add(halo);g.userData.halo=halo;
+    g.userData.head=head;g.userData.hair=cap;g.userData.torso=torso;
+    for(const sign of [-1,1]){
+      const leg=this.mesh(new THREE.CylinderGeometry(.12,.13,.5,7),pants,sign*.19,.38,0);
+      const arm=this.mesh(new THREE.CylinderGeometry(.11,.11,.57,7),shirt,sign*.44,1.03,0);
+      g.add(leg,arm);g.userData.legs.push(leg);g.userData.arms.push(arm);
+    }
+    const halo=this.mesh(new THREE.RingGeometry(.55,.67,28),new THREE.MeshBasicMaterial({color:'#e8ffd1',side:THREE.DoubleSide,transparent:true,opacity:.85}),0,.11,0,false);
+    halo.rotation.x=-Math.PI/2;halo.visible=false;g.add(halo);g.userData.halo=halo;
+    const bubbleCanvas=document.createElement('canvas');bubbleCanvas.width=128;bubbleCanvas.height=64;
+    const ctx=bubbleCanvas.getContext('2d');
+    ctx.fillStyle='rgba(28,58,46,.87)';ctx.beginPath();ctx.roundRect(6,8,116,44,18);ctx.fill();
+    ctx.fillStyle='#f1ffe5';ctx.font='bold 36px sans-serif';ctx.textAlign='center';ctx.fillText('···',64,38);
+    const bubble=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(bubbleCanvas),transparent:true,depthWrite:false}));
+    bubble.position.set(0,2.7,0);bubble.scale.set(1.65,.82,1);bubble.visible=false;g.add(bubble);g.userData.bubble=bubble;
     for(const m of g.children)if(m.isMesh){m.userData.agentId=a.id;this.pickables.push(m);}
     g.position.set(a.x,terrainHeight(a.x,a.z)+.1,a.z);return g;
   }
@@ -429,7 +455,28 @@ class Diorama {
   }
   update(time){
     this.timer+=time;
-    this.fire.scale.y=.8+Math.sin(this.timer*9)*.2;this.campLight.intensity=2+Math.sin(this.timer*7)*.3;
+    const phase=(this.sim.seconds%75)/75;
+    const daylight=phase<.12?(.42+.58*phase/.12):phase<.67?1:phase<.89?(1-.58*(phase-.67)/.22):.42;
+    const raining=this.sim.weather.kind==='rain';
+    const dry=this.sim.weather.kind==='drought';
+    const lightFactor=daylight*(raining?.65:dry?1.15:1);
+    this.sun.intensity=3.5*lightFactor;
+    this.ambient.intensity=1.0+1.35*lightFactor;
+    this.sun.position.set(Math.cos(phase*Math.PI*2)*35,13+daylight*35,Math.sin(phase*Math.PI*2)*35);
+    this.renderer.toneMappingExposure=.97+daylight*.46;
+    this.scene.background.copy(this.nightSky).lerp(raining?this.rainSky:this.clearSky,clamp(lightFactor,0,1));
+    this.scene.fog.color.copy(this.scene.background);
+    this.rain.visible=raining;
+    if(raining){
+      const attr=this.rainGeometry.attributes.position,coords=this.rainCoords;
+      for(let i=0;i<coords.length;i+=6){
+        let y=coords[i+1]-time*19;
+        if(y<terrainHeight(coords[i],coords[i+2])+.3)y=17+Math.random()*4;
+        coords[i+1]=y;coords[i+4]=y-.64;
+      }
+      attr.needsUpdate=true;
+    }
+    this.fire.scale.y=.8+Math.sin(this.timer*9)*.2;this.campLight.intensity=1.4+(1-daylight)*3+Math.sin(this.timer*7)*.3;
     this.water.position.y=-.58+Math.sin(this.timer*.45)*.015;
     for(const b of this.butterflies){
       const t=this.timer+b.phase;
@@ -441,6 +488,16 @@ class Diorama {
     this.sim.agents.forEach((a,i)=>{
       const g=this.people[i];g.position.set(a.x,terrainHeight(a.x,a.z)+.04+(a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),a.z);
       if(a.mode==='walk' && a.target){const dx=a.target.x-a.x,dz=a.target.z-a.z;if(Math.hypot(dx,dz)>.2)g.rotation.y=Math.atan2(dx,dz);}
+      const walking=a.mode==='walk',working=a.mode==='work';
+      const stride=walking?Math.sin(this.timer*8+i*1.3)*.47:0;
+      for(let j=0;j<2;j++){
+        g.userData.legs[j].rotation.x=(j===0?1:-1)*stride;
+        g.userData.arms[j].rotation.x=walking?(j===0?-1:1)*stride*.7:working?Math.sin(this.timer*5+i+j*1.8)*.24:0;
+      }
+      g.userData.torso.rotation.z=walking?Math.sin(this.timer*8+i)*.035:a.purpose==='resting'?.10:0;
+      g.userData.head.rotation.y=a.purpose==='talking'?Math.sin(this.timer*2+i)*.25:Math.sin(this.timer*.8+i)*.07;
+      g.userData.hair.rotation.y=g.userData.head.rotation.y;
+      g.userData.bubble.visible=a.purpose==='talking';
       g.userData.halo.visible=i===selectedAgent;
     });
     for(const tree of this.treeModels)if(tree.resource.stock<=0 && tree.model.scale.y>.32)tree.model.scale.y=.32;
