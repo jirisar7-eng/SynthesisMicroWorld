@@ -568,6 +568,7 @@ class Diorama {
   }
   resize(){const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h,false);}
 }
+async function launchMicroWorld(){
 let selectedAgent=0;
 const sim=new Civilization();
 const thirtyScenario=new URLSearchParams(location.search).get('scenario')==='30';
@@ -1077,3 +1078,9 @@ try{
   el('scene').innerHTML='<div style="display:grid;place-items:center;height:100%;background:#1f3028;color:#fff;padding:30px;text-align:center">3D vykreslování není dostupné. Ověř podporu WebGL v prohlížeči.</div>';
   events();renderUI();
 }
+}
+launchMicroWorld().catch(error=>{
+  console.error('MicroWorld bootstrap failed',error);
+  const target=document.getElementById('scene');
+  if(target)target.textContent='Nelze spustit zobrazení světa. Zkontroluj dostupnost simulačního serveru.';
+});
