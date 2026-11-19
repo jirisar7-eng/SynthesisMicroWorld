@@ -5,6 +5,7 @@ import {Civilization} from '../src/simulation-core.js';
 import {populateFounders,livingSummary} from '../src/generations.js';
 import {serializeWorld,restoreWorld} from '../src/world-save.js';
 import {calendarAt} from '../src/world-calendar.js';
+import {createGodApi} from './god-api.mjs';
 
 const bind=process.env.MW_BIND_ADDR||'127.0.0.1';
 const port=Number(process.env.MW_PORT||8081);
@@ -29,10 +30,13 @@ if(!restored){
   sim.addEvent('Nepřetržitý svět',
     'Serverová simulace zahájila vlastní čas pro '+maxPopulation+' zakladatelů.','⌛');
 }
-let last=process.hrtime.bigint(),saving=false,stopping=false,lastSavedAt=null;
+let last=process.hrtime.bigint(),savingPromise=null,stopping=false,lastSavedAt=null;
 const timeStart=new Date().toISOString();
+const godApi=createGodApi({sim,persist:snapshot,snapshotPath,
+  token:process.env.MW_GOD_ADMIN_TOKEN,initialSpeed:speed});
 const status=()=>({
-  service:'SYNTHESIS MicroWorld headless simulation',version:'MW-010-PREVIEW',
+  service:'SYNTHESIS MicroWorld headless simulation',version:'MW-GOD-001-PREVIEW',
+  god:godApi.getControl(),
   mode:'server-authoritative-headless',
   startedAt:timeStart,restored,day:sim.day,year:calendarAt(sim.day).year,
   population:livingSummary(sim.agents),seconds:Math.round(sim.seconds*100)/100,
@@ -53,6 +57,9 @@ const server=http.createServer((req,res)=>{
   const url=new URL(req.url,'http://localhost');
   res.setHeader('Cache-Control','no-store');
   res.setHeader('X-Content-Type-Options','nosniff');
+  if(url.pathname.startsWith('/api/god/')){
+    void godApi.handle(req,res);return;
+  }
   if(req.method!=='GET'){
     res.writeHead(405,{'Content-Type':'application/json'});
     res.end(JSON.stringify({error:'read_only'}));return;
@@ -61,7 +68,8 @@ const server=http.createServer((req,res)=>{
   if(url.pathname==='/api/world'){
     try{
       const payload=serializeWorld(sim);
-      res.writeHead(200,{'Content-Type':'application/json; charset=utf-8'});
+      res.writeHead(200,{'Content-Type':'application/json; charset=utf-8',
+        'X-MW-World-Epoch':String(sim.godEpoch||0)});
       res.end(payload);
     }catch(err){
       console.error('MW_SERVER_WORLD_READ_FAIL',err.message);
@@ -83,14 +91,18 @@ const server=http.createServer((req,res)=>{
   res.end(JSON.stringify({error:'not_found'}));
 });
 async function snapshot(){
-  if(saving)return; saving=true;
-  const tmp=snapshotPath+'.tmp';
-  try{
-    await mkdir(dirname(snapshotPath),{recursive:true});
-    await writeFile(tmp,serializeWorld(sim),{mode:0o600});
-    await rename(tmp,snapshotPath);
-    lastSavedAt=new Date().toISOString();
-  }finally{saving=false;}
+  // Simultaneous autosaves and god actions share one durable write.
+  if(savingPromise)return savingPromise;
+  savingPromise=(async()=>{
+    const tmp=snapshotPath+'.tmp';
+    try{
+      await mkdir(dirname(snapshotPath),{recursive:true});
+      await writeFile(tmp,serializeWorld(sim),{mode:0o600});
+      await rename(tmp,snapshotPath);
+      lastSavedAt=new Date().toISOString();
+    }catch(e){await import('node:fs/promises').then(fs=>fs.unlink(tmp).catch(()=>{}));throw e;}
+  })();
+  try{return await savingPromise;}finally{savingPromise=null;}
 }
 let loopTimer=null,saveTimer=null;
 async function stop(signal){
@@ -111,7 +123,9 @@ server.listen(port,bind,()=>{
     last=now;
     // Bounded catch-up is deliberate; the server never jumps decades because
     // its process was asleep for hours. State survives process restarts.
-    sim.update(elapsed*speed);
+    if(godApi.isBusy())return; // no clock advances during a snapshot transaction
+    const control=godApi.getControl();
+    if(!control.paused)sim.update(elapsed*control.speed);
   },250);
   saveTimer=setInterval(()=>snapshot().catch(err=>console.error('MW_SERVER_SAVE_FAIL',err)),snapshotIntervalMs);
 });
