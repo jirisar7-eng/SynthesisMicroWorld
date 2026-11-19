@@ -14,7 +14,7 @@ import {loadSpeed} from './carry-poses.js';
 import {initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS} from './construction-stages.js';
 import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS} from './avatar-modes.js';
 import {fetchExternalWeather} from './external-world-api.js';
-import {createSprings,springRefill,drinkFromSpring,waterAvailability} from './water-cycle.js';
+import {createSprings,springRefill,drinkFromSpring,collectSpringWater,waterAvailability} from './water-cycle.js';
 import {calendarAt,ageResidents} from './world-calendar.js';
 import {WORLD_SAVE_KEY,serializeWorld,restoreWorld} from './world-save.js';
 import {populationDay,livingSummary,isDependent,isLiving,populateFounders} from './generations.js';
@@ -302,6 +302,26 @@ class Civilization {
     if(need==='rest'||(dark && a.energy<76)){
       this.go(a,'rest',{x:rand(-3,3),z:rand(-3,3)},dark?'Je noc a chce se vyspat.':'Je unavený a potřebuje odpočinek.');return;
     }
+    // Childcare is an emergent survival job, not a free background buff:
+    // caretakers physically fetch the exact food item or spring-water bottle.
+    const dependent=this.agents.find(child=>isDependent(child)&&
+      child.profile.genealogy.parentIds.includes(a.id)&&
+      (child.hunger>=65||child.thirst>=65));
+    if(dependent&&a.energy>=22&&a.social?.status==='resident'){
+      if(dependent.thirst>=65){
+        const known=chooseKnownResource(a,'spring',this.seconds);
+        const source=known&&this.springs.find(spring=>spring.id===known.id&&spring.stock>0);
+        if(source&&this.go(a,'fetchFamilyWater',source,
+          'Jde nabrat skutečnou pitnou vodu pro dítě '+dependent.name+'.',
+          {childId:dependent.id,sourceId:source.id}))return;
+      }
+      if(dependent.hunger>=65){
+        const source=this.material.findFoodSource();
+        if(source&&this.go(a,'fetchFamilyFood',source.container,
+          'Jde pro konkrétní jídlo, aby nakrmil dítě '+dependent.name+'.',
+          {childId:dependent.id,itemId:source.item.id}))return;
+      }
+    }
     if(need==='social' && this.seekConversation(a))return;
     if(a.helpVisitorPending && this.avatar.mode==='poor' && this.food>6&&a.energy>30){
       const source=this.material.findFoodSource();
@@ -510,6 +530,26 @@ class Civilization {
       this.work(a,'drinking',3,'Pije přímo u pramene, pokud v něm ještě zbývá voda.');
       return;
     }
+    if(a.purpose==='fetchFamilyWater'){
+      this.work(a,'collectFamilyWater',2,'Nabírá vodu do skutečné přepravní lahve.');return;
+    }
+    if(a.purpose==='fetchFamilyFood'){
+      const order=a.resource,child=this.agents[order?.childId];
+      if(child&&isDependent(child)&&this.material.pickupStorage(a,[order.itemId])){
+        a.carry=this.material.cargo(a).length;a.carryType='berry';
+        this.go(a,'deliverFamilyFood',child,'Nese jídlo přímo dítěti.',{childId:child.id});
+        return;
+      }
+      this.idle(a);return;
+    }
+    if(a.purpose==='deliverFamilyWater'||a.purpose==='deliverFamilyFood'){
+      const child=this.agents[a.resource?.childId];
+      if(child&&isDependent(child)&&Math.hypot(child.x-a.x,child.z-a.z)<3.1){
+        this.work(a,a.purpose==='deliverFamilyWater'?'givingFamilyWater':'givingFamilyFood',
+          2,'Osobně se stará o dítě a předává mu přinesený materiál.');
+      }else this.idle(a);
+      return;
+    }
     if(a.purpose==='surveySite'){
       this.work(a,'surveying',4.5,'Prohlíží svah a vytyčuje budoucí půdorys.');return;
     }
@@ -670,6 +710,39 @@ class Civilization {
     if(a.purpose==='explore'){if(this.seconds-this.lastScout>15){this.addEvent('Průzkum okolí',a.name+' prozkoumal další kus krajiny.','⌕');this.lastScout=this.seconds;}this.idle(a);}
   }
   completed(a){
+    if(a.purpose==='collectFamilyWater'){
+      const order=a.resource;
+      const source=this.springs.find(s=>s.id===order?.sourceId);
+      const child=this.agents[order?.childId];
+      if(isDependent(child)&&collectSpringWater(source,a)){
+        const bottle=this.material.add('water',1,this.material.cargoContainer(a).id)[0];
+        a.carry=1;a.carryType='water';
+        lifeEvent(a,this.day,'Nabral pitnou vodu','Voda má předmět ID '+bottle.id+
+          ' a pochází z '+source.name+'.');
+        this.go(a,'deliverFamilyWater',child,'Nese naplněnou lahev dítěti.',{childId:child.id});
+        return;
+      }
+      this.idle(a);return;
+    }
+    if(a.purpose==='givingFamilyWater'||a.purpose==='givingFamilyFood'){
+      const child=this.agents[a.resource?.childId];
+      const kind=a.purpose==='givingFamilyWater'?'water':'food';
+      const item=kind==='water'?this.material.consumeCarried(a,'water'):
+        this.material.cargo(a).find(i=>FOOD_TYPES.includes(i.type));
+      const used=kind==='food'&&item?this.material.consumeCarried(a,item.type):item;
+      if(child&&isDependent(child)&&used){
+        if(kind==='water')child.thirst=Math.max(0,child.thirst-75);
+        else child.hunger=Math.max(0,child.hunger-70);
+        child.health=Math.min(100,(child.health??100)+3);
+        lifeEvent(child,this.day,kind==='water'?'Rodič přinesl vodu':'Rodič přinesl jídlo',
+          a.name+' se postaral o dítě. Převzatý předmět ID '+used.id+'.');
+        remember(a,'Postaral se o dítě '+child.name);
+        this.addEvent('Rodinná péče',a.name+' donesl '+(kind==='water'?'pitnou vodu':'jídlo')+
+          ' dítěti '+child.name+' z reálných zásob.','♡');
+      }
+      a.carry=this.material.cargo(a).length;a.carryType=null;
+      this.idle(a);return;
+    }
     if(a.purpose==='drinking'){
       const spring=a.resource;
       if(drinkFromSpring(spring,a)){
