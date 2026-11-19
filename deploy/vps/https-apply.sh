@@ -82,13 +82,17 @@ docker compose --project-name microworld_private -f deploy/vps/compose.yaml \
   -f deploy/vps/compose.https.yaml config -q
 
 # No password in shell history, repository, command-line arguments or logs.
-printf 'Zvol silné heslo pro MicroWorld (min. 16 znaků): ' >&2
+printf 'Heslo pro MicroWorld (min. 5 znaku; delsi je bezpecnejsi): ' >&2
 IFS= read -rs first; printf '\n' >&2
 printf 'Zopakuj heslo: ' >&2
 IFS= read -rs second; printf '\n' >&2
-if [[ "${#first}" -lt 16 || "$first" != "$second" ]]; then
+if [[ "${#first}" -lt 5 ]]; then
   unset first second
-  echo 'BLOCKED: password too short or confirmation differs' >&2; exit 2
+  echo 'BLOCKED: heslo musi mit alespon 5 znaku' >&2; exit 2
+fi
+if [[ "$first" != "$second" ]]; then
+  unset first second
+  echo 'BLOCKED: potvrzeni hesla se neshoduje' >&2; exit 2
 fi
 unset second
 hash="$(printf '%s\n' "$first" | docker exec -i caddy_proxy caddy hash-password --algorithm bcrypt)"
