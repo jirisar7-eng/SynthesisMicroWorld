@@ -8,6 +8,7 @@ import {initializeBiography,lifeEvent} from './biography.js';
 import {initializeLife,remember} from './life.js';
 import {initCognition} from './cognition.js';
 import {calendarAt} from './world-calendar.js';
+import {clearSpawn,solidFootprints} from './spatial-world.js';
 const CHILD_NAMES=['Jana','David','Sofie','Lukáš','Anna','Daniel','Eliška','Oliver','Nela','Filip','Julie','Viktor'];
 export const ADULT_AGE=18;
 export const GESTATION_DAYS=270;
@@ -161,4 +162,45 @@ export function livingSummary(people){
     deceased:people.filter(a=>!isLiving(a)).length,
     couples:people.filter(a=>isLiving(a)&&a.profile?.genealogy?.partnerId!==null).length/2,
     born:people.filter(a=>a.profile?.bornDay>1).length};
+}
+
+/** Independent test scenario: REAL 30 living founders, not fake dashboard count.
+ * Existing six remain intact; newcomers are added with legal 3D positions,
+ * separate memories, needs and identities. Max scenario 70 for bounded cost.
+ */
+export function populateFounders(world,count=30){
+  if(!Number.isInteger(count)||count<world.agents.length||count>MAX_PEOPLE)
+    throw new Error('Scenario population is outside the supported range');
+  const surnames=['Novotný','Králová','Dvořák','Svoboda','Malá','Veselý'];
+  const arrivals=['Karolína','Petr','Marta','Ondřej','Tereza','Milan','Zora',
+    'Pavel','Irena','Martin','Lucie','Jakub','Aneta','Roman','Petra','Vojtěch',
+    'Adéla','Bohumil','Hana','Tomáš','Simona','Josef','Alena','Samuel'];
+  while(world.agents.length<count){
+    const id=world.agents.length,n=id-6;
+    const angle=n*2.399963229728;
+    const radius=5.7+(n%4)*1.2;
+    const candidate={x:Math.cos(angle)*radius,z:Math.sin(angle)*radius};
+    const blockers=[...solidFootprints(world),
+      ...world.agents.filter(isLiving).map(a=>({shape:'circle',x:a.x,z:a.z,r:.48}))];
+    const position=clearSpawn(candidate,blockers);
+    const name=arrivals[n%arrivals.length];
+    const person=initializeBiography(initCognition(initializeLife({
+      id,name,x:position.x,z:position.z,
+      energy:75+(id%7)*3,mode:'idle',purpose:'',reason:'Přišel hledat nový domov.',
+      target:null,resource:null,carry:0,carryType:null,workRemaining:0,
+      workTotal:0,choiceAt:0,waypoints:[],speed:2+(id%5)*.1,
+      color:[0xb17b59,0x9baf74,0x637f9b,0xca9d75,0x8e798d,0x81ad9f][id%6]
+    },id)),id);
+    person.profile.age=18+(id*7)%34;
+    person.profile.birthYear=-person.profile.age;
+    person.profile.fullName=name+' '+surnames[id%6];
+    person.profile.origin='Příchozí zakladatel';
+    person.profile.timeline=[{day:world.day,event:'Připojil se k zakladatelům',
+      detail:'Do prázdné krajiny přišel nezávisle, se svými vlastními potřebami.'}];
+    person.sex=id%2===0?'female':'male';
+    person.alive=true;person.health=100;
+    world.social.initialize(person);
+    world.agents.push(person);
+  }
+  return livingSummary(world.agents);
 }
