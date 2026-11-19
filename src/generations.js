@@ -104,6 +104,9 @@ export function populationDay(world,day){
       if(a.hunger>96||a.thirst>99)a.health=Math.max(0,a.health-3);
     }
     if(a.health<=0){
+      a.deathCause=a.thirst>99&&a.hunger>98?'dehydratace a hlad':
+        a.thirst>99?'dehydratace':a.hunger>98?'hlad':
+        a.profile.age>=85?'stáří':'jiná příčina';
       a.alive=false;a.mode='deceased';a.purpose='';a.waypoints=[];a.target=null;
       a.diedDay=day;lifeEvent(a,day,'Úmrtí','Dlouhodobé ohrožení zdraví nebo věk.');
       const partner=people[a.profile.genealogy.partnerId];
