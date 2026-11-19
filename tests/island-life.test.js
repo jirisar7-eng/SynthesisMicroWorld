@@ -24,7 +24,7 @@ test('footpaths cannot cross ocean and a distant island is not known by magic',(
   assert.equal(islandOf({x:86,z:0}),'far');
   assert.equal(sim.go(a,'explore',{x:86,z:0},'Try illegal water crossing'),false);
   assert.notEqual(a.mode,'walk');
-  assert.equal(a.cognition.islands?.far?.seen,true===false);
+  assert.notEqual(a.cognition.islands?.far?.seen,true);
   assert.equal(discoverFarShore(sim,a),false);
   a.x=39;a.z=0;
   assert.equal(discoverFarShore(sim,a),true);
@@ -44,10 +44,11 @@ test('vessel is built using five existing wood IDs physically transported to coa
   assert.equal(coastalArrival(sim,a),true);
   assert.equal(a.purpose,'assemblingVessel');
   assert.equal(sim.material.count('wood'),initial,'Wood is reserved while under construction');
+  const consumed=[...a.vesselPlan.woodIds];
   assert.equal(coastalComplete(sim,a),true);
   assert.equal(sim.islands.vessels.length,1);
   assert.equal(sim.islands.vessels[0].type,'raft');
-  assert.equal(sim.material.items.filter(i=>a.vesselPlan?.woodIds.includes(i.id)).length,0);
+  assert.equal(sim.material.items.filter(i=>consumed.includes(i.id)).length,0);
   assert.equal(sim.material.count('wood'),initial);
   assert.equal(sim.islands.vessels[0].side,'home');
 });
