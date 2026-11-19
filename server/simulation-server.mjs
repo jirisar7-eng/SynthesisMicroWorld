@@ -58,6 +58,18 @@ const server=http.createServer((req,res)=>{
     res.end(JSON.stringify({error:'read_only'}));return;
   }
   if(url.pathname==='/healthz'){res.writeHead(200,{'Content-Type':'text/plain'});res.end('ok');return;}
+  if(url.pathname==='/api/world'){
+    try{
+      const payload=serializeWorld(sim);
+      res.writeHead(200,{'Content-Type':'application/json; charset=utf-8'});
+      res.end(payload);
+    }catch(err){
+      console.error('MW_SERVER_WORLD_READ_FAIL',err.message);
+      res.writeHead(503,{'Content-Type':'application/json'});
+      res.end(JSON.stringify({error:'world_not_available'}));
+    }
+    return;
+  }
   if(url.pathname==='/api/status'){
     res.writeHead(200,{'Content-Type':'application/json'});
     res.end(JSON.stringify(status()));return;

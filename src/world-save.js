@@ -54,6 +54,23 @@ function validate(parsed){
     throw new Error('Incomplete or malformed world save');
   return state;
 }
+/**
+ * Hydrate a read-only browser mirror of the headless authoritative world.
+ * Unlike restoreWorld(), this does not cancel a voyage, drop cargo,
+ * change decisions or generate a fake reload event.
+ */
+export function hydrateWorldMirror(sim,json){
+  if(typeof json!=='string'||json.length>SAVE_LIMIT)
+    throw new Error('Invalid remote world payload');
+  const state=validate(JSON.parse(json,decode));
+  const listeners=sim.listeners;
+  Object.assign(sim,state);
+  sim.material=Object.assign(new MaterialWorld(),state.material);
+  sim.social=Object.assign(new SocialDynamics(),state.social);
+  sim.paths=Object.assign(new Footpaths(),state.paths);
+  sim.listeners=listeners;
+  return {day:sim.day,seconds:sim.seconds,people:sim.agents.length};
+}
 export function restoreWorld(sim,json){
   if(typeof json!=='string'||json.length>SAVE_LIMIT)
     throw new Error('World save is absent or too large');

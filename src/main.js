@@ -16,7 +16,7 @@ import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABEL
 import {fetchExternalWeather} from './external-world-api.js';
 import {createSprings,springRefill,drinkFromSpring,collectSpringWater,waterAvailability} from './water-cycle.js';
 import {calendarAt,ageResidents} from './world-calendar.js';
-import {WORLD_SAVE_KEY,serializeWorld,restoreWorld} from './world-save.js';
+import {WORLD_SAVE_KEY,serializeWorld,restoreWorld,hydrateWorldMirror} from './world-save.js';
 import {populationDay,livingSummary,isDependent,isLiving,populateFounders} from './generations.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot} from './spatial-world.js';
 import {
@@ -568,6 +568,7 @@ class Diorama {
   }
   resize(){const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h,false);}
 }
+async function launchMicroWorld(){
 let selectedAgent=0;
 const sim=new Civilization();
 const thirtyScenario=new URLSearchParams(location.search).get('scenario')==='30';
@@ -578,6 +579,7 @@ if(thirtyScenario){
     ' zakladatelů začíná s nezávislými potřebami a rozhodováním.','⌛');
 }
 let world;
+let remoteWorldMode=false,remoteWorldError=null;
 let initialSaveStatus=thirtyScenario?'Scénář 30 obyvatel':'Nový svět';
 try{
   const rawSave=window.localStorage.getItem(activeSaveKey);
@@ -585,10 +587,50 @@ try{
     const restored=restoreWorld(sim,rawSave);
     initialSaveStatus='Načtený svět · den '+restored.day;
   }
-}catch(error){
+ }catch(error){
   initialSaveStatus='Uložený svět nelze načíst; nový svět byl vytvořen';
   console.error('MicroWorld save restore failed',error);
 }
+// If a private VPS snapshot endpoint exists, it replaces the local scene.
+// A failed connection to a previously established server never starts a
+// competing local civilization: that would fabricate history for this URL.
+async function refreshServerWorld(){
+  const response=await fetch('/api/world',{cache:'no-store',signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw new Error('Server HTTP '+response.status);
+  const snapshot=await response.text();
+  const oldSeconds=remoteWorldMode?sim.seconds:-1;
+  const state=hydrateWorldMirror(sim,snapshot);
+  if(oldSeconds>=0&&state.seconds<oldSeconds)throw new Error('World clock went backwards');
+  remoteWorldMode=true;remoteWorldError=null;
+  if(el('save-status'))el('save-status').textContent='Živý svět na VPS · den '+state.day;
+  return state;
+}
+try{
+  await refreshServerWorld();
+  initialSaveStatus='Živý svět na VPS · den '+sim.day;
+}catch(error){
+  // Public/browser-only builds intentionally have no /api/world endpoint.
+  // Private preview has it; if it becomes unreachable later the viewer freezes.
+  console.info('No live VPS world endpoint; using isolated local simulation',error.message);
+}
+if(remoteWorldMode){
+  for(const id of ['btn-save-world','btn-pause','btn-speed','btn-new-world',
+    'visitor-mode','btn-live-weather','nature','cooperation'])
+    if(el(id))el(id).disabled=true;
+  for(const button of document.querySelectorAll('[data-god]'))button.disabled=true;
+  for(const button of document.querySelectorAll('[data-visitor-move]'))button.disabled=true;
+  const tagline=document.querySelector('.top-center');
+  if(tagline)tagline.textContent='ŽIVÝ SVĚT NA VPS · POUZE POZOROVÁNÍ';
+  window.setInterval(async()=>{
+    try{await refreshServerWorld();}
+    catch(error){
+      remoteWorldError=error.message;
+      if(el('save-status'))el('save-status').textContent='Server nedostupný · zobrazuji poslední potvrzený stav';
+      console.warn('VPS world update failed',error);
+    }
+  },5000);
+}
+
 
 // Two real navigable page routes; transitions preserve the running simulation and WebGL instance.
 function pageFromLocation(){
@@ -893,7 +935,7 @@ el('btn-next-npc').addEventListener('click',()=>chooseAgent((selectedAgent+1)%si
 for(const button of document.querySelectorAll('[data-god]')){
   button.addEventListener('click',()=>{
     const kind=button.dataset.god;
-    if(sim.miracle(kind)){
+    if(!remoteWorldMode&&sim.miracle(kind)){
       const label=kind==='rain'?'Déšť zasáhl krajinu.':kind==='drought'?'Krajinu zasáhlo sucho.':'Úroda v krajině zesílila.';
       announce(label+' Sleduj, jak se obyvatelé zachovají.');
       renderUI();
@@ -978,7 +1020,7 @@ window.setInterval(()=>{if(sim.externalWeatherEnabled)updateExternalWeather();},
 // reserves, elapsed years and the world chronicle on this browser only.
 let saveDebounce=false;
 function saveCurrentWorld(manual=false){
-  if(saveDebounce)return;
+  if(remoteWorldMode||saveDebounce)return;
   saveDebounce=true;
   try{
     window.localStorage.setItem(activeSaveKey,serializeWorld(sim));
@@ -997,9 +1039,9 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden')saveCurrentWorld(false);
 });
 window.addEventListener('beforeunload',()=>saveCurrentWorld(false));
-el('btn-pause').addEventListener('click',()=>{paused=!paused;el('btn-pause').textContent=paused?'▶':'Ⅱ';el('btn-pause').title=paused?'Pokračovat':'Pozastavit';});
+el('btn-pause').addEventListener('click',()=>{if(remoteWorldMode)return;paused=!paused;el('btn-pause').textContent=paused?'▶':'Ⅱ';el('btn-pause').title=paused?'Pokračovat':'Pozastavit';});
 const speeds=[1,2,4];let speedIndex=0,paused=false;
-el('btn-speed').addEventListener('click',()=>{speedIndex=(speedIndex+1)%3;el('btn-speed').textContent=speeds[speedIndex]+'×';});
+el('btn-speed').addEventListener('click',()=>{if(remoteWorldMode)return;speedIndex=(speedIndex+1)%3;el('btn-speed').textContent=speeds[speedIndex]+'×';});
 el('nature').addEventListener('input',e=>{el('nature-out').textContent=e.target.value+' %';sim.setPolicies(e.target.value,sim.cooperation);});
 el('cooperation').addEventListener('input',e=>{el('cooperation-out').textContent=e.target.value+' %';sim.setPolicies(sim.nature,e.target.value);});
 el('btn-new-world').addEventListener('click',()=>{if(confirm('Začít nový experiment? Současná simulace se ztratí.'))location.reload();});
@@ -1026,7 +1068,7 @@ try{
     const actual=paused?0:delta*speeds[speedIndex];
     if(document.body.classList.contains('page-map')&&sim.avatar.mode!=='observer')
       advanceAvatar(sim.avatar,delta,indexSolids(solidFootprints(sim)));
-    if(actual)sim.update(actual);
+    if(actual&&!remoteWorldMode)sim.update(actual);
     if(document.body.classList.contains('page-map'))world.update(delta);
     uiTime+=delta;if(uiTime>.28){renderUI();uiTime=0;}
   }
@@ -1036,3 +1078,9 @@ try{
   el('scene').innerHTML='<div style="display:grid;place-items:center;height:100%;background:#1f3028;color:#fff;padding:30px;text-align:center">3D vykreslování není dostupné. Ověř podporu WebGL v prohlížeči.</div>';
   events();renderUI();
 }
+}
+launchMicroWorld().catch(error=>{
+  console.error('MicroWorld bootstrap failed',error);
+  const target=document.getElementById('scene');
+  if(target)target.textContent='Nelze spustit zobrazení světa. Zkontroluj dostupnost simulačního serveru.';
+});
