@@ -11,8 +11,10 @@ export const WORLD_SAVE_KEY='synthesis-microworld-world-v1';
 const SAVE_LIMIT=8_000_000;
 
 function encode(key,value){
-  if(value instanceof Map)return {$type:'Map',entries:[...value.entries()]};
-  if(value instanceof Set)return {$type:'Set',values:[...value.values()]};
+  // VM/headless tests and embedded workers may produce Map/Set from another realm.
+  const kind=Object.prototype.toString.call(value);
+  if(kind==='[object Map]')return {$type:'Map',entries:[...value.entries()]};
+  if(kind==='[object Set]')return {$type:'Set',values:[...value.values()]};
   if(typeof value==='number'&&!Number.isFinite(value))
     return {$type:'Number',value:String(value)};
   return value;
