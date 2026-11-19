@@ -51,10 +51,17 @@ test('MW-MAT-004: open air rain wets logs; roof dries them; wet logs burn colder
  dry.addStructure('warehouse',-7,3,1,30);
  wet.addStructure('warehouse',-7,3,1,30);
  const testWood=wet.items.find(x=>x.type==='wood');
- assert.ok(wet.covered(testWood));
+ assert.equal(wet.covered(testWood),false,'Building a roof must not teleport logs under it');
+ const carrier={id:5,name:'Klára',x:-3,z:2};
+ const move=wet.planStockTransfer(4);
+ assert.ok(move);
+ assert.ok(wet.pickupStorage(carrier,move.ids));
+ assert.equal(wet.covered(testWood),false,'Wood remains exposed while carried in rain');
+ wet.deliver(carrier,move.destination.id);
+ assert.ok(wet.covered(testWood),'Log becomes covered only after actual transport');
  const initial=testWood.wet;
  wet.tick(15,'rain');
- assert.ok(testWood.wet<initial,'covered material dries even while it rains outside');
+ assert.ok(testWood.wet<initial,'Covered material dries even while it rains outside');
 });
 
 test('MW-MAT-005: seeds must exist and be consumed before fields can grow',()=>{
