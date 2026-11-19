@@ -4,7 +4,8 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --no-audit --no-fund --ignore-scripts --no-package-lock
 COPY . .
-RUN npm test && SKIP_POLYHAVEN_ASSETS=1 npm run build
+# Android 16 / modern browsers: remote mirror uses native top-level await.
+RUN npm test && SKIP_POLYHAVEN_ASSETS=1 npm run build -- --target es2022
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY deploy/vps/mw011/nginx.conf /etc/nginx/conf.d/default.conf
