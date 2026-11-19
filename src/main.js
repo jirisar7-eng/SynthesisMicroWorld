@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
 import './god-console.css';
 import {createGodConsole} from './god-console.js';
+import {GodVisuals} from './god-visuals.js';
 import {MaterialWorld, RECIPES, FOOD_TYPES, ITEM_INFO} from './material-world.js';
 import {initializeBiography,lifeEvent,experienceSkill,makeLifeCard} from './biography.js';
 import {MaterialRenderer,BuildingRenderer} from './material-renderer.js';
@@ -83,6 +84,7 @@ class Diorama {
     createGroundClutter(this.scene,terrainHeight,this.sim.trees);
     this.addRocksAndGrass();this.addDeposits();this.addRain();
     this.pathVisuals=new FootpathRenderer(this.scene,terrainHeight);
+    this.godVisuals=new GodVisuals(THREE,this.scene,terrainHeight,sim);
     this.inventoryVisuals=new MaterialRenderer(this.scene,terrainHeight);
     this.buildingVisuals=new BuildingRenderer(this.scene,terrainHeight);
     this.people=[];this.pickables=[];
@@ -532,6 +534,7 @@ class Diorama {
     this.updateVisitor(time);
     if(this.sim.avatar.mode==='observer')this.controls.update();
     this.syncSeaLife();
+    this.godVisuals.sync(this.sim);
     this.renderer.render(this.scene,this.camera);
   }
   syncSeaLife(){
