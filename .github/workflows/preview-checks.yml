@@ -12,6 +12,7 @@ on:
       - feature/mw-008-construction-avatar
       - feature/mw-009-living-generations
       - feature/mw-009b-family-lifecycle
+      - feature/mw-011-islands-professions
   pull_request:
     branches:
       - feature/mw-001-first-life
@@ -23,6 +24,8 @@ on:
       - deploy/vps-https-002
       - feature/mw-007-real-space
       - feature/mw-008-construction-avatar
+      - feature/mw-009b-family-lifecycle
+      - feature/mw-011-islands-professions
       - main
 permissions:
   contents: read
@@ -37,5 +40,11 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Autonomy, material transport and living world tests
         run: npm test
+      - name: Full 730-day autonomous world acceptance (30 founders)
+        env:
+          MW_TEST_DAYS: "730"
+          MW_TEST_STEP: "2"
+        timeout-minutes: 18
+        run: node scripts/mw-life-001.mjs
       - name: Production build
         run: npm run build
