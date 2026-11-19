@@ -42,7 +42,7 @@ jobs:
           fi
           echo 'MW013_3D_DIAGNOSTICS_PASS'
 
-      - name: Chromium: real 3D renderer against persistent 30-NPC world
+      - name: Chromium real 3D renderer with persistent 30-NPC world
         env:
           MW011_RELEASE: mw013-ci
           MW011_HOST_PORT: "18585"
