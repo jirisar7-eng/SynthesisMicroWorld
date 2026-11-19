@@ -150,7 +150,10 @@ class Diorama {
         visibleItemMeshes:this.inventoryVisuals.itemMeshes.size,
         inventoryItemCount:this.sim.material.items.length,
         drawCalls:this.renderer.info.render.calls,
-        shadowMaps:this.renderer.shadowMap.enabled
+        shadowMaps:this.renderer.shadowMap.enabled,
+        shoreBands:this.shoreVisuals.children.length,
+        seaTexture:!!this.water.material.map,
+        cloudMinAltitude:this.cloudAltitudeMin??0
       })
     });
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
@@ -446,6 +449,7 @@ class Diorama {
     }
     // Existing clouds are atmospheric background, not oversized floating
     // boulders directly in front of the camera at the edge of the village.
+    this.cloudAltitudeMin=Infinity;
     const cloudMat=new THREE.MeshBasicMaterial({
       color:'#e7f0ee',transparent:true,opacity:.29,
       depthWrite:false,fog:true
@@ -453,6 +457,7 @@ class Diorama {
     for(let i=0;i<5;i++){
       const cloud=new THREE.Group();
       cloud.position.set((i-2)*43,73+rng()*12,-80+(rng()-.5)*32);
+      this.cloudAltitudeMin=Math.min(this.cloudAltitudeMin,cloud.position.y);
       for(let j=0;j<3;j++){
         const ball=this.mesh(new THREE.SphereGeometry(3.5+rng()*1.3,9,7),
           cloudMat,(j-1)*4.1,(rng()-.5)*.65,rng()*2-1,false);
