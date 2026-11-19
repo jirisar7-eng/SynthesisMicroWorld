@@ -173,13 +173,17 @@ export function chooseExplorationTarget(agent, time, rng = Math.random) {
   // Candidate targets are generated around the person's CURRENT position.
   // No trees, berries, or concealed world coordinates are consulted.
   const c = agent.cognition;
+  // An explorer on the second island plans locally instead of choosing
+  // unreachable targets across open sea.
+  const far = agent.x > 58, centerX = far ? 86 : 0;
+  const maxRadius = far ? 16 : 32.8;
   let best = null, bestScore = -Infinity;
   for (let i = 0; i < 28; i++) {
     const theta = rng() * Math.PI * 2;
     const step = 8 + rng() * 10;
     const x = agent.x + Math.cos(theta) * step;
     const z = agent.z + Math.sin(theta) * step;
-    if (Math.hypot(x, z) > 32.8) continue;
+    if (Math.hypot(x - centerX, z) > maxRadius) continue;
     const key = toCell(x, z);
     const nearby = c.visited.reduce((n, p) => n + (Math.hypot(p.x - x, p.z - z) < 7.8 ? 1 : 0), 0);
     const score = (c.visitedKeys[key] ? -60 : 0) - nearby * 8 + step * .24 + rng() * 2;
@@ -188,7 +192,7 @@ export function chooseExplorationTarget(agent, time, rng = Math.random) {
   if (!best) {
     // Defensive fallback uses only the physical camp, not hidden resources.
     const theta = rng() * Math.PI * 2;
-    best = { x: Math.cos(theta) * 13, z: Math.sin(theta) * 13 };
+    best = { x: centerX + Math.cos(theta) * 13, z: Math.sin(theta) * 13 };
   }
   episode(agent, {
     time,
