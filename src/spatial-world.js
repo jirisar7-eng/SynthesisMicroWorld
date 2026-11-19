@@ -59,6 +59,36 @@ export function solidFootprints(world) {
   return result;
 }
 
+/** A lightweight broad-phase grid: collision checks see only nearby solids.
+ * Cell buckets include each footprint's maximum citizen clearance, preventing
+ * any false negatives at bin edges or during continuous swept movement.
+ */
+const BUCKET=2.4;
+export function indexSolids(solids){
+  if(solids?.buckets)return solids;
+  const buckets=new Map();
+  for(const solid of solids){
+    const hx=solid.shape==='box'?solid.hx:solid.r;
+    const hz=solid.shape==='box'?solid.hz:solid.r;
+    const margin=1.02;
+    const ax=Math.floor((solid.x-hx-margin)/BUCKET);
+    const bx=Math.floor((solid.x+hx+margin)/BUCKET);
+    const az=Math.floor((solid.z-hz-margin)/BUCKET);
+    const bz=Math.floor((solid.z+hz+margin)/BUCKET);
+    for(let x=ax;x<=bx;x++)for(let z=az;z<=bz;z++){
+      const k=x+':'+z;
+      let list=buckets.get(k);
+      if(!list){list=[];buckets.set(k,list);}
+      list.push(solid);
+    }
+  }
+  return {buckets,count:solids.length};
+}
+
+function nearbySolids(point,index){
+  return index.buckets.get(Math.floor(point.x/BUCKET)+':'+Math.floor(point.z/BUCKET))||[];
+}
+
 /** True if a citizen/circular hull overlaps the 2D projection of a solid. */
 export function collides(point,solid,radius=CITIZEN_RADIUS){
   if(solid.shape==='box'){
@@ -72,7 +102,8 @@ export function collides(point,solid,radius=CITIZEN_RADIUS){
 export function isBlocked(point,solids,radius=CITIZEN_RADIUS){
   if(!Number.isFinite(point.x)||!Number.isFinite(point.z)||
     Math.abs(point.x)>WORLD_LIMIT||Math.abs(point.z)>WORLD_LIMIT)return true;
-  return solids.some(s=>collides(point,s,radius));
+  const candidates=solids?.buckets?nearbySolids(point,solids):solids;
+  return candidates.some(s=>collides(point,s,radius));
 }
 
 /** Continuous swept-segment check, including diagonal corner clipping. */
@@ -143,6 +174,8 @@ function simplify(path,solids,radius){
 
 /** Full route or null: no movement through walls and no teleporting through impassable maps. */
 export function planWalk(start,target,solids,{radius=CITIZEN_RADIUS,maxNodes=5500}={}){
+  // Broad-phase lives only for one planning request; no stale collision cache.
+  solids=indexSolids(solids);
   const goal=approachPoint(start,target,solids,radius);
   if(!goal)return null;
   if(isBlocked(start,solids,radius))return null;
