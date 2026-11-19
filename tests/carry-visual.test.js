@@ -68,3 +68,23 @@ test('MW-CARRY-003: interruption deposits exactly the same physical objects on t
   assert.equal(economy.count('wood'),2);
   assert.equal(economy.countAll(),16);
 });
+
+test('MW-007B-003: dropped goods receive one instanced ground contact shadow draw call',()=>{
+  const economy=new MaterialWorld();
+  const person=agent(0),scene=new THREE.Scene();
+  const render=new MaterialRenderer(scene,()=>2);
+  economy.collect(person,'apple',2);
+  economy.dropCargo(person,'rest',{x:3,z:4});
+  render.sync(economy);
+  assert.equal(render.groundShadows.count,2);
+  assert.ok(render.groundShadows.isInstancedMesh);
+  const center=new THREE.Matrix4();
+  render.groundShadows.getMatrixAt(0,center);
+  const position=new THREE.Vector3(),rotation=new THREE.Quaternion(),scale=new THREE.Vector3();
+  center.decompose(position,rotation,scale);
+  assert.equal(position.y,2.023);
+  assert.ok(Math.abs(position.x-3)>.4,'Ground pieces settle around container center');
+  economy.pickupStorage(person,economy.recoverable().ids);
+  render.sync(economy);
+  assert.equal(render.groundShadows.count,0,'No ghosts when goods leave ground');
+});
