@@ -83,6 +83,8 @@ class Civilization {
       agent.x=spawn.x;agent.z=spawn.z;agent.waypoints=[];
       this.social.initialize(agent);
     }
+    const avatarSpawn=clearSpawn(this.avatar,startingSolids);
+    this.avatar.x=avatarSpawn.x;this.avatar.z=avatarSpawn.z;
     this.lastDiscoveryReport=-100;
     this.nextMeal=75;this.lastScout=-999;this.addEvent('Nový začátek','Šest obyvatel dorazilo do neznámé krajiny.','✧');
     this.addEvent('První rozhodnutí','Obyvatelé sami zjišťují, co potřebují k přežití.','◈');
@@ -495,6 +497,7 @@ class Civilization {
       const project=this.construction;
       if(project){
         const n=this.material.depositProjectLoad(a,project.id);
+        project.progress=phaseProgress(project);
         a.carry=0;a.carryType=null;
         this.addEvent('Stavební materiál dopraven',
           a.name+' donesl '+n+' skutečné předměty. Na staveništi je '+
@@ -1492,6 +1495,9 @@ function renderLifePage(){
     applepicking:'Sbírá jablka',weaving:'Plete košík',plant:'Vysévá pole',
     planting:'Sází osivo',reap:'Sklízí úrodu',reaping:'Sklízí obilí',
     build:'Staví budovu',building:'Stavba',
+    surveySite:'Zaměřuje pozemek',surveying:'Provádí průzkum pozemku',
+    clearSite:'Jde čistit staveniště',clearing:'Odstraňuje kameny a keře',
+    gradeSite:'Jde srovnat terén',grading:'Rovná stavební plochu',
     pickupBuild:'Nabírá stavební materiál',deliverBuild:'Nese materiál na stavbu',
     pickupStore:'Přebírá zásoby',deliverStore:'Stěhuje zásoby do skladiště',
     pickupDropped:'Zvedá odložené předměty',deliverDropped:'Nese nalezené zásoby',
@@ -1535,17 +1541,21 @@ function renderUI(){
     if(el('map-trails'))el('map-trails').textContent=sim.paths.summary().trails;
     if(el('map-hauls'))el('map-hauls').textContent=sim.material.logistics.constructionDeliveries;
     if(el('map-carrying'))el('map-carrying').textContent=sim.material.countCarried();
+    if(el('visitor-status'))el('visitor-status').textContent=
+      PLAYER_LABELS[sim.avatar.mode]+' · šipky / WASD nebo dotykový ovladač';
   }
   if(document.body.classList.contains('page-overview'))renderMaterialLedger();
   renderLifePage();
   const building=!!sim.construction,done=sim.material.structures.length>0;
   el('stage-tag').textContent=done?'PRVNÍ DOMOV':building?'VÝSTAVBA':'PRŮZKUM';
-  el('stage-title').textContent=building?'Staví: '+RECIPES[sim.construction.type].name:
+  el('stage-title').textContent=building?RECIPES[sim.construction.type].name+' — '+
+    (CONSTRUCTION_LABELS[sim.construction.phase]||'Výstavba'):
     done?'Osada roste vlastními silami':'Hledání místa k životu';
-  el('stage-description').textContent=building?'Obyvatelé opravdu spotřebovali materiál a právě z něj stavějí.':
+  el('stage-description').textContent=building?'Každá fáze stavby vyžaduje fyzickou práci: zaměření, odstranění kamenů a keřů, srovnání plochy, materiál, základy, hrubou stavbu s lešením a dokončení.':
     done?'Obyvatelé sami rozšiřují osadu. Zásoby, materiály a budovy jsou fyzicky evidované.':
     'Obyvatelé hledají dřevo, kámen, jídlo, semena a další materiály.';
-  el('progress-name').textContent=building?'Postup stavby':done?'Hotové budovy':'Materiál na první dům';
+  el('progress-name').textContent=building?(CONSTRUCTION_LABELS[sim.construction.phase]||'Postup stavby'):
+    done?'Hotové budovy':'Materiál na první dům';
   el('progress-number').textContent=building?Math.round(sim.construction.progress*100)+' %':
     done?sim.material.structures.length+' objektů':Math.min(sim.wood,12)+' / 12';
   el('build-progress').style.width=(building?sim.construction.progress*100:done?100:
@@ -1621,6 +1631,80 @@ for(const button of document.querySelectorAll('[data-god]')){
     }else announce('Božská moc se ještě obnovuje.');
   });
 }
+// Visitor controls change the player's body, not citizens' decisions.
+const modeSelect=el('visitor-mode'),movePanel=el('visitor-controls');
+const resetVisitorControls=()=>{for(const key of Object.keys(sim.avatar.controls))
+  sim.avatar.controls[key]=false;
+  for(const button of document.querySelectorAll('[data-visitor-move]'))
+    button.classList.remove('is-held');
+};
+modeSelect.addEventListener('change',()=>{
+  resetVisitorControls();
+  const previous=sim.avatar.mode;
+  selectPlayerMode(sim.avatar,modeSelect.value);
+  movePanel.hidden=sim.avatar.mode==='observer';
+  if(sim.avatar.mode==='observer')world?.resetCamera();
+  announce(sim.avatar.mode==='god'?'Bůh se zjevil mezi obyvateli.':
+    sim.avatar.mode==='poor'?'Procházíš světem jako chudý poutník.':
+    sim.avatar.mode==='invisible'?'Pohybuješ se světem neviditelně.':
+    'Vrátil ses k volné kameře.');
+});
+movePanel.hidden=true;
+for(const button of document.querySelectorAll('[data-visitor-move]')){
+  const direction=button.dataset.visitorMove;
+  button.addEventListener('pointerdown',event=>{
+    if(sim.avatar.mode==='observer')return;
+    event.preventDefault();button.setPointerCapture?.(event.pointerId);
+    sim.avatar.controls[direction]=true;button.classList.add('is-held');
+  });
+  for(const type of ['pointerup','pointercancel','lostpointercapture']){
+    button.addEventListener(type,()=>{
+      sim.avatar.controls[direction]=false;button.classList.remove('is-held');
+    });
+  }
+}
+const visitorKeys={KeyW:'forward',ArrowUp:'forward',KeyS:'back',ArrowDown:'back',
+  KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right'};
+window.addEventListener('keydown',event=>{
+  const direction=visitorKeys[event.code];
+  if(!direction||sim.avatar.mode==='observer'||document.activeElement?.matches('input,select,textarea'))return;
+  event.preventDefault();sim.avatar.controls[direction]=true;
+});
+window.addEventListener('keyup',event=>{
+  const direction=visitorKeys[event.code];
+  if(direction)sim.avatar.controls[direction]=false;
+});
+window.addEventListener('blur',resetVisitorControls);
+
+// Real API is OPTIONAL. It never receives the user's GPS location or private data.
+let loadingWeather=false;
+async function updateExternalWeather(){
+  if(!sim.externalWeatherEnabled||loadingWeather)return;
+  loadingWeather=true;
+  try{
+    const weather=await fetchExternalWeather();
+    if(!sim.externalWeatherEnabled)return;
+    sim.externalWeather=weather;
+    sim.weather={kind:weather.kind,until:sim.seconds+220};
+    el('weather-api-status').textContent=weather.reference+' · '+weather.temperature+
+      ' °C · srážky '+weather.precipitation+' mm · aktualizováno';
+    sim.addEvent('Počasí z externího API','Open-Meteo ('+weather.reference+
+      ') ovlivňuje srážky, práci a pohyb obyvatel.','☂');
+  }catch(error){
+    el('weather-api-status').textContent='Open-Meteo nedostupné — pokračuje místní simulace';
+    console.warn('Optional live weather unavailable',error);
+  }finally{loadingWeather=false;}
+}
+el('btn-live-weather').addEventListener('click',()=>{
+  sim.externalWeatherEnabled=!sim.externalWeatherEnabled;
+  el('btn-live-weather').textContent=sim.externalWeatherEnabled?
+    'Živé počasí API: zapnuto':'Živé počasí API: vypnuto';
+  if(sim.externalWeatherEnabled)updateExternalWeather();
+  else {sim.externalWeather=null;
+    el('weather-api-status').textContent='Místní autonomní simulace počasí';
+  }
+});
+window.setInterval(()=>{if(sim.externalWeatherEnabled)updateExternalWeather();},600000);
 el('btn-pause').addEventListener('click',()=>{paused=!paused;el('btn-pause').textContent=paused?'▶':'Ⅱ';el('btn-pause').title=paused?'Pokračovat':'Pozastavit';});
 const speeds=[1,2,4];let speedIndex=0,paused=false;
 el('btn-speed').addEventListener('click',()=>{speedIndex=(speedIndex+1)%3;el('btn-speed').textContent=speeds[speedIndex]+'×';});
@@ -1635,7 +1719,16 @@ try{
   world=new Diorama(el('scene'),sim);
   el('btn-reset-camera').addEventListener('click',()=>world.resetCamera());
   const clock=new THREE.Clock();let uiTime=0;
-  function frame(){requestAnimationFrame(frame);const delta=Math.min(clock.getDelta(),.06);const actual=paused?0:delta*speeds[speedIndex];if(actual)sim.update(actual);if(document.body.classList.contains('page-map'))world.update(delta);uiTime+=delta;if(uiTime>.28){renderUI();uiTime=0;}}
+  function frame(){
+    requestAnimationFrame(frame);
+    const delta=Math.min(clock.getDelta(),.06);
+    const actual=paused?0:delta*speeds[speedIndex];
+    if(document.body.classList.contains('page-map')&&sim.avatar.mode!=='observer')
+      advanceAvatar(sim.avatar,delta,indexSolids(solidFootprints(sim)));
+    if(actual)sim.update(actual);
+    if(document.body.classList.contains('page-map'))world.update(delta);
+    uiTime+=delta;if(uiTime>.28){renderUI();uiTime=0;}
+  }
   events();renderUI();frame();
 }catch(error){
   console.error('MicroWorld rendering failed',error);
