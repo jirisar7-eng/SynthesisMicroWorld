@@ -11,6 +11,7 @@ import {FootpathRenderer} from './footpath-renderer.js';
 import {decideCommunityProject} from './settlement-planner.js';
 import {SocialDynamics} from './social-dynamics.js';
 import {createGroundTexture} from './ground-details.js';
+import {makeSeaDetailTexture,createShoreVisuals} from './sea-visuals.js';
 import {createForestPatches,createTrampledCamp,createGroundClutter,createTreeContactShadows} from './terrain-details.js';
 import {loadSpeed} from './carry-poses.js';
 import {initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS} from './construction-stages.js';
@@ -107,11 +108,15 @@ class Diorama {
     farGeo.computeVertexNormals();
     const farLand=new THREE.Mesh(farGeo,land.material);
     farLand.position.x=86;farLand.receiveShadow=true;this.scene.add(farLand);
+    this.seaTexture=makeSeaDetailTexture();
     const water=new THREE.Mesh(new THREE.PlaneGeometry(950,950),
-      new THREE.MeshStandardMaterial({color:'#598f99',roughness:.58,
-        metalness:.03,transparent:true,opacity:.93,depthWrite:false}));
+      new THREE.MeshStandardMaterial({
+        color:'#598f99',map:this.seaTexture,roughness:.67,
+        metalness:.01,transparent:true,opacity:.93,depthWrite:false
+      }));
     water.rotation.x=-Math.PI/2;water.position.y=-.58;
     this.scene.add(water);this.water=water;
+    this.shoreVisuals=createShoreVisuals(this.scene,terrainHeight,-.58);
     Diorama.lastStage='resources';
     this.addCamp();
     this.treeModels=[];this.berryModels=[];this.saplingModels=[];
@@ -439,10 +444,21 @@ class Diorama {
       for(const sign of [-1,1]){const w=this.mesh(wingGeo,wingMaterials[i%4],sign*.2,0,0,false);w.scale.set(.85,.09,1.6);b.add(w);}
       this.scene.add(b);this.butterflies.push({group:b,x,z,phase:rng()*6.28});
     }
-    const cloudMat=new THREE.MeshStandardMaterial({color:'#f4fcf3',transparent:true,opacity:.55,roughness:1,depthWrite:false});
-    for(let i=0;i<6;i++){
-      const cloud=new THREE.Group();cloud.position.set((i-3)*19,19+rng()*6,-21+(rng()-.5)*30);
-      for(let j=0;j<4;j++){const ball=this.mesh(new THREE.SphereGeometry(2+rng()*1.3,9,7),cloudMat,(j-1.5)*2.6,(rng()-.5),rng()*2-1,false);ball.scale.y=.5;cloud.add(ball);}
+    // Existing clouds are atmospheric background, not oversized floating
+    // boulders directly in front of the camera at the edge of the village.
+    const cloudMat=new THREE.MeshBasicMaterial({
+      color:'#e7f0ee',transparent:true,opacity:.29,
+      depthWrite:false,fog:true
+    });
+    for(let i=0;i<5;i++){
+      const cloud=new THREE.Group();
+      cloud.position.set((i-2)*43,73+rng()*12,-80+(rng()-.5)*32);
+      for(let j=0;j<3;j++){
+        const ball=this.mesh(new THREE.SphereGeometry(3.5+rng()*1.3,9,7),
+          cloudMat,(j-1)*4.1,(rng()-.5)*.65,rng()*2-1,false);
+        ball.scale.set(1.7,.24,1.12);
+        cloud.add(ball);
+      }
       this.scene.add(cloud);
     }
   }
@@ -553,7 +569,10 @@ class Diorama {
       attr.needsUpdate=true;
     }
     this.fire.scale.y=.8+Math.sin(this.timer*9)*.2;this.campLight.intensity=1.4+(1-daylight)*3+Math.sin(this.timer*7)*.3;
-    this.water.position.y=-.58+Math.sin(this.timer*.45)*.015;
+    this.water.position.y=-.58+Math.sin(this.timer*.45)*.012;
+    this.shoreVisuals.position.y=this.water.position.y+.028;
+    this.seaTexture.offset.x=(this.timer*.00021)%1;
+    this.seaTexture.offset.y=(this.timer*.00014)%1;
     for(const entry of this.springModels||[])entry.pool.material.opacity=.20+.62*(entry.source.stock/entry.source.maxStock);
     for(const b of this.butterflies){
       const t=this.timer+b.phase;
@@ -1348,6 +1367,7 @@ try{
         showUIFailure(error,'ui-frame');
       }
     }
+    if(perfBadge)perfBadge.hidden=!document.body.classList.contains('page-map');
     if(perfBadge&&!rendererFailed&&document.body.classList.contains('page-map')){
       perfFrames++;
       const now=performance.now(),elapsed=now-perfSince;
