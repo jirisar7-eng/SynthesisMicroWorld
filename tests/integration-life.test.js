@@ -12,6 +12,7 @@ import {initializeBiography,lifeEvent,experienceSkill,makeLifeCard} from '../src
 import {Footpaths} from '../src/footpaths.js';
 import {decideCommunityProject} from '../src/settlement-planner.js';
 import {SocialDynamics} from '../src/social-dynamics.js';
+import {loadSpeed} from '../src/carry-poses.js';
 import {
   initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
   learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode
@@ -26,7 +27,7 @@ const classCode=source.slice(start,end)+'\nglobalThis.TestCivilization = Civiliz
 const context=vm.createContext({
   console,Math,MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO,
   initializeBiography,lifeEvent,experienceSkill,makeLifeCard,
-  Footpaths,decideCommunityProject,SocialDynamics,
+  Footpaths,decideCommunityProject,SocialDynamics,loadSpeed,
   initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
   learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode,
   initializeLife,updateLife,remember,socialBond,needsDecision,relationshipLabel
