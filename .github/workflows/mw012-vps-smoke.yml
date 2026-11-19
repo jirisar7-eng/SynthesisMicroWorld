@@ -31,12 +31,16 @@ jobs:
           MW011_HOST_PORT: "18585"
         run: |
           docker compose -f deploy/vps/mw011/compose.yaml config -q
-          docker compose -f deploy/vps/mw011/compose.yaml config |
-            grep -F '127.0.0.1:18585'
-          if docker compose -f deploy/vps/mw011/compose.yaml config |
-            grep -E '(0\.0\.0\.0:18585|published: "?80"?|published: "?443"?)'; then
-            echo 'Unexpected public port detected'; exit 1
-          fi
+          docker compose -f deploy/vps/mw011/compose.yaml config --format json |
+            python3 -c 'import json,sys
+p=json.load(sys.stdin)
+assert p["name"]=="microworld011_preview"
+assert set(p["services"])=={"sim","web"}
+assert len(p["services"]["web"]["ports"])==1
+port=p["services"]["web"]["ports"][0]
+assert port["host_ip"]=="127.0.0.1" and int(port["published"])==18585
+assert not p["services"]["sim"].get("ports")
+print("MW012_LOOPBACK_ONLY=PASS")'
       - name: Build exact frontend and isolated Node server images
         env:
           MW011_RELEASE: ci
