@@ -4,7 +4,7 @@
 - **Zdroj:** `jirisar7-eng/SynthesisMicroWorld`, pracovní větev `deploy/vps-mw-001`, založená nad MW-006D.
 - **Runtime:** staticky sestavená aktuální hra (Vite/Three.js) v samostatném nginx kontejneru, bez přístupu k produkční DB, SMTP ani jiným službám.
 - **Compose projekt:** `microworld_private`; unikátní lokální obraz `local/microworld:<git_sha>`.
-- **Port:** pouze `127.0.0.1:18583` na VPS, nikoli `0.0.0.0`. Docker síť je oddělená a interní.
+- **Port:** pouze `127.0.0.1:18583` na VPS, nikoli `0.0.0.0`. Docker síť je oddělená bridge; příchozí port je publikovaný pouze na VPS loopbacku.
 - **Zachováno:** původní Caddy, Mailcow, STT, CMS a ostatní projekty. Žádný Docker volume ani DB není měněn.
 - **Verifikace:** automatické jednotkové testy a Vite build jsou součástí sestavení obrazu; vlastní Nginx `/healthz` i routes `/svet/`, `/prehled/` a `/lide/`.
 - **Realita:** toto je webová hra běžící v prohlížeči. Přesun na VPS sám ještě nepřidává serverové běžící NPC ani persistentní uložené světy.
