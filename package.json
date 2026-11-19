@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "build": "node scripts/sync-polyhaven-terrain.mjs && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "build:offline": "SKIP_POLYHAVEN_ASSETS=1 npm run build"
   },
   "dependencies": {
     "three": "0.174.0"
