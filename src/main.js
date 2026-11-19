@@ -39,16 +39,41 @@ class Diorama {
     this.remoteMotion=null;
     this.remoteMotionAge=REMOTE_SNAPSHOT_INTERVAL_SECONDS;
     Diorama.lastStage='webgl';
-    this.sim=sim;this.container=container;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#c8dfdd');this.scene.fog=new THREE.Fog('#c8dfdd',65,205);
+    this.sim=sim;this.container=container;this.scene=new THREE.Scene();
+    this.mobileGraphics=window.matchMedia('(pointer:coarse)').matches||
+      window.matchMedia('(max-width:720px)').matches;
+    // The second island and sea must remain visible from the zoomed-out
+    // camera. Fog is atmospheric, not a wall of opaque mint colour.
+    this.scene.background=new THREE.Color('#aac7d0');
+    this.scene.fog=new THREE.Fog('#aac7d0',140,405);
+    this.visualClock=this.sim.seconds;
+    this.clockFrom=this.sim.seconds;
+    this.clockTo=this.sim.seconds;
+    this.clockAge=REMOTE_SNAPSHOT_INTERVAL_SECONDS;
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.7));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.43;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,this.mobileGraphics?1.25:1.6));
+    this.renderer.shadowMap.enabled=true;
+    this.renderer.shadowMap.type=this.mobileGraphics?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace=THREE.SRGBColorSpace;
+    this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure=1.08;
     container.appendChild(this.renderer.domElement);
     Diorama.lastStage='camera';
-    this.camera=new THREE.PerspectiveCamera(47,1,.1,250);this.resetCamera();
+    this.camera=new THREE.PerspectiveCamera(47,1,.1,475);this.resetCamera();
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);this.controls.enableDamping=true;this.controls.dampingFactor=.07;this.controls.minDistance=13;this.controls.maxDistance=175;this.controls.maxPolarAngle=Math.PI*.46;this.controls.minPolarAngle=.22;this.controls.target.set(0,1.5,0);this.controls.enablePan=true;this.controls.screenSpacePanning=true;this.controls.maxTargetRadius=115;
-    this.ambient=new THREE.HemisphereLight('#edffff','#768b68',2.4);this.scene.add(this.ambient);
-    this.clearSky=new THREE.Color('#c8dfdd');this.nightSky=new THREE.Color('#627c84');this.rainSky=new THREE.Color('#869a9b');
-    const sun=new THREE.DirectionalLight('#ffeed6',3.5);sun.position.set(-20,43,24);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-49;sun.shadow.camera.right=49;sun.shadow.camera.top=49;sun.shadow.camera.bottom=-49;sun.shadow.camera.near=1;sun.shadow.camera.far=110;sun.shadow.bias=-.00022;this.scene.add(sun);this.sun=sun;
+    this.ambient=new THREE.HemisphereLight('#dce9e7','#6c8467',1.65);
+    this.scene.add(this.ambient);
+    this.clearSky=new THREE.Color('#aac7d0');
+    this.nightSky=new THREE.Color('#516a7d');
+    this.rainSky=new THREE.Color('#91aab4');
+    const sun=new THREE.DirectionalLight('#fff2de',2.4);
+    sun.position.set(-20,43,24);sun.castShadow=true;
+    const shadowResolution=this.mobileGraphics?1024:2048;
+    sun.shadow.mapSize.set(shadowResolution,shadowResolution);
+    sun.shadow.camera.left=-49;sun.shadow.camera.right=49;
+    sun.shadow.camera.top=49;sun.shadow.camera.bottom=-49;
+    sun.shadow.camera.near=1;sun.shadow.camera.far=110;
+    sun.shadow.bias=-.00022;this.scene.add(sun);this.sun=sun;
     Diorama.lastStage='terrain';
     const groundGeo=new THREE.PlaneGeometry(100,100,148,148);groundGeo.rotateX(-Math.PI/2);
     const pos=groundGeo.attributes.position,vertices=[];
@@ -80,7 +105,11 @@ class Diorama {
     farGeo.computeVertexNormals();
     const farLand=new THREE.Mesh(farGeo,land.material);
     farLand.position.x=86;farLand.receiveShadow=true;this.scene.add(farLand);
-    const water=new THREE.Mesh(new THREE.PlaneGeometry(270,270),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
+    const water=new THREE.Mesh(new THREE.PlaneGeometry(950,950),
+      new THREE.MeshStandardMaterial({color:'#598f99',roughness:.58,
+        metalness:.03,transparent:true,opacity:.93,depthWrite:false}));
+    water.rotation.x=-Math.PI/2;water.position.y=-.58;
+    this.scene.add(water);this.water=water;
     Diorama.lastStage='resources';
     this.addCamp();
     this.treeModels=[];this.berryModels=[];this.saplingModels=[];
@@ -92,7 +121,9 @@ class Diorama {
     this.addRocksAndGrass();this.addDeposits();this.addRain();
     Diorama.lastStage='physical-world';
     this.pathVisuals=new FootpathRenderer(this.scene,terrainHeight);
-    this.inventoryVisuals=new MaterialRenderer(this.scene,terrainHeight);
+    this.inventoryVisuals=new MaterialRenderer(this.scene,terrainHeight,
+      {maxPerGroup:this.mobileGraphics?30:55,
+       maxTotal:this.mobileGraphics?520:1300});
     this.buildingVisuals=new BuildingRenderer(this.scene,terrainHeight);
     Diorama.lastStage='citizens';
     this.people=[];this.pickables=[];
@@ -451,19 +482,29 @@ class Diorama {
     }
     this.remoteMotion=transitions;
     this.remoteMotionAge=0;
+    // Visual daylight changes smoothly when a new authoritative five-second
+    // snapshot arrives; NPC AI time and calendar remain untouched.
+    this.clockFrom=this.visualClock;
+    this.clockTo=this.sim.seconds;
+    this.clockAge=0;
   }
   update(time){
     this.timer+=time;
     this.remoteMotionAge+=time;
-    const phase=(this.sim.seconds%75)/75;
+    this.clockAge+=time;
+    if(this.remoteMotion){
+      const t=Math.min(1,this.clockAge/REMOTE_SNAPSHOT_INTERVAL_SECONDS);
+      this.visualClock=this.clockFrom+(this.clockTo-this.clockFrom)*t;
+    }else this.visualClock=this.sim.seconds;
+    const phase=(this.visualClock%75)/75;
     const daylight=phase<.12?(.42+.58*phase/.12):phase<.67?1:phase<.89?(1-.58*(phase-.67)/.22):.42;
     const raining=this.sim.weather.kind==='rain';
     const dry=this.sim.weather.kind==='drought';
     const lightFactor=daylight*(raining?.65:dry?1.15:1);
-    this.sun.intensity=3.5*lightFactor;
-    this.ambient.intensity=1.0+1.35*lightFactor;
+    this.sun.intensity=2.45*lightFactor;
+    this.ambient.intensity=.78+.85*lightFactor;
     this.sun.position.set(Math.cos(phase*Math.PI*2)*35,13+daylight*35,Math.sin(phase*Math.PI*2)*35);
-    this.renderer.toneMappingExposure=.97+daylight*.46;
+    this.renderer.toneMappingExposure=.86+daylight*.23;
     this.scene.background.copy(this.nightSky).lerp(raining?this.rainSky:this.clearSky,clamp(lightFactor,0,1));
     this.scene.fog.color.copy(this.scene.background);
     this.rain.visible=raining;
@@ -552,7 +593,7 @@ class Diorama {
     }
     this.pathVisuals.update(this.sim.paths,this.sim.seconds);
     this.inventoryRefresh=(this.inventoryRefresh||0)+time;
-    if(this.inventoryRefresh>.35){
+    if(this.inventoryRefresh>(this.mobileGraphics?1.15:.6)){
       this.inventoryRefresh=0;
       this.inventoryVisuals.sync(this.sim.material);
       this.buildingVisuals.sync(this.sim.material,this.sim.construction);
