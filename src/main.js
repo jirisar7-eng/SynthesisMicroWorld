@@ -118,7 +118,18 @@ class Civilization {
     a.workRemaining=duration*(skilled?1.12-a.personality.persistence/500:1);
     a.workTotal=a.workRemaining;a.reason=reason;
   }
-  idle(a){a.mode='idle';a.purpose='';a.target=null;a.resource=null;a.choiceAt=this.seconds+rand(0.25,1.25);}
+  idle(a){
+    // If the actor abandons a haul, actual goods land at their feet.
+    // Never leave them in an invisible ghost inventory.
+    const fallen=this.material.dropCargo(a,'Přerušená činnost');
+    if(fallen){
+      this.addEvent('Odložený náklad',
+        a.name+' položil '+fallen.quantity+' předmětů na zem. Materiál nezmizel.','⌑');
+      a.carry=0;a.carryType=null;
+    }
+    a.mode='idle';a.purpose='';a.target=null;a.resource=null;
+    a.choiceAt=this.seconds+rand(.25,1.25);
+  }
   startConstructionTrip(a){
     const project=this.construction;
     if(!project)return;
@@ -230,6 +241,15 @@ class Civilization {
       if(move){
         this.go(a,'pickupStore',move.source,
           'Chce přenést '+move.ids.length+' věcí z nekrytého skladu pod střechu.',move);
+        return;
+      }
+    }
+    // Abandoned items can be rescued and individually carried home.
+    if(a.social?.status==='resident'&&!this.construction&&Math.random()<.27){
+      const lost=this.material.recoverable();
+      if(lost){
+        this.go(a,'pickupDropped',lost.source,
+          'Našel odložený materiál a chce ho vrátit do skutečných zásob.',lost);
         return;
       }
     }
@@ -352,6 +372,23 @@ class Civilization {
     if(a.purpose==='campWander'){
       this.work(a,'campLiving',6,
         'Tráví čas o samotě, odpočívá a přemýšlí o návratu.');return;
+    }
+    if(a.purpose==='pickupDropped'){
+      const order=a.resource;
+      if(order&&this.material.pickupStorage(a,order.ids)){
+        a.carry=this.material.cargo(a).length;
+        this.go(a,'deliverDropped',{x:0,z:0},
+          'Vrací nalezené předměty do hromad a bedýnek.');
+        return;
+      }
+      this.idle(a);return;
+    }
+    if(a.purpose==='deliverDropped'){
+      const n=this.material.deliver(a);
+      a.carry=0;a.carryType=null;this.syncStock();
+      this.addEvent('Nalezené zásoby vráceny',
+        a.name+' donesl zpět '+n+' skutečných předmětů.','⌑');
+      this.idle(a);return;
     }
     if(a.purpose==='pickupBuild'){
       const order=a.resource;
@@ -1220,6 +1257,7 @@ function renderLifePage(){
     build:'Staví budovu',building:'Stavba',
     pickupBuild:'Nabírá stavební materiál',deliverBuild:'Nese materiál na stavbu',
     pickupStore:'Přebírá zásoby',deliverStore:'Stěhuje zásoby do skladiště',
+    pickupDropped:'Zvedá odložené předměty',deliverDropped:'Nese nalezené zásoby',
     assistBuild:'Jde pomoci staviteli',assisting:'Pomáhá stavět',explore:'Průzkum',
     eat:'Jde jíst',eating:'Jí',talking:'Rozhovor',rest:'Odpočinek',
     resting:'Spí',meet:'Setkání',departWood:'Nese dřevo',departFood:'Bere jídlo',departCamp:'Odchází do samoty',campWander:'Žije v táboře',campLiving:'Odpočívá stranou',returnHome:'Vrací se domů',tentEat:'Jí ve stanu'};
