@@ -44,7 +44,7 @@ test('MW-INTEGRATION-001: six autonomous citizens run for several days with phys
   }
   const movement=sim.paths.summary();
   assert.ok(sim.day>=8,'Several game days must pass');
-  assert.ok(movement.totalSteps>10,'Citizens must actually walk');
+  assert.ok(movement.footprints>10,'Citizens must actually walk');
   assert.ok(movement.trails>2,'Traffic must leave visible worn ground');
   assert.ok(sim.agents.every(a=>Number.isFinite(a.x)&&Number.isFinite(a.z)));
   assert.ok(sim.agents.every(a=>a.cognition&&a.social&&a.profile),'All agents keep their cognitive and life records');
