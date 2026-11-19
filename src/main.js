@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
+import {MaterialWorld, RECIPES, FOOD_TYPES, ITEM_INFO} from './material-world.js';
+import {initializeBiography,lifeEvent,experienceSkill,makeLifeCard} from './biography.js';
+import {MaterialRenderer,BuildingRenderer} from './material-renderer.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
   learnOutcome, exchangeKnowledge, decision, knowledgeSummary, episode
@@ -32,15 +35,23 @@ function points(count,minR,maxR,exclude=0){
 
 class Civilization {
   constructor(){
-    this.seconds=0;this.day=1;this.wood=0;this.food=14;this.shelters=[];this.construction=null;
+    this.seconds=0;this.day=1;this.material=new MaterialWorld();
+    this.wood=0;this.stone=0;this.food=14;this.shelters=[];this.construction=null;
+    this.syncStock();this.lastFireRecord=null;this.lastFireEvent=-100;
     this.nature=60;this.cooperation=80;this.messages=[];this.listeners=[];
     this.weather={kind:'clear',until:0};this.lastMiracle=-100;this.meetings=new Map();this.meetingSeq=0;this.lastNightNotice=-1;
     this.trees=points(83,13,34,0).map((p,i)=>({...p,id:i,stock:9,maxStock:9}));
     this.berries=points(28,8,32).map((p,i)=>({...p,id:i,stock:10,maxStock:10}));
-    this.agents=names.map((name,i)=>initCognition(initializeLife({id:i,name,x:rand(-2.8,2.8),z:rand(-2.8,2.8),energy:75+rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,workRemaining:0,workTotal:0,choiceAt:0,speed:2+rand(0,.55),color:colors[i]},i)));
+    this.stones=points(21,14,32).map((p,i)=>({...p,id:i,stock:10,maxStock:10}));
+    this.apples=points(12,14,32).map((p,i)=>({...p,id:i,stock:9,maxStock:9}));
+    this.agents=names.map((name,i)=>initializeBiography(initCognition(initializeLife({id:i,name,x:rand(-2.8,2.8),z:rand(-2.8,2.8),energy:75+rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,carryType:null,workRemaining:0,workTotal:0,choiceAt:0,speed:2+rand(0,.55),color:colors[i]},i)),i));
     this.lastDiscoveryReport=-100;
     this.nextMeal=75;this.lastScout=-999;this.addEvent('Nový začátek','Šest obyvatel dorazilo do neznámé krajiny.','✧');
     this.addEvent('První rozhodnutí','Obyvatelé sami zjišťují, co potřebují k přežití.','◈');
+  }
+  syncStock(){
+    this.wood=this.material.count('wood');this.stone=this.material.count('stone');
+    this.food=this.material.foodCount();this.seeds=this.material.count('seed');
   }
   addEvent(title,detail,icon='◈'){
     this.messages.unshift({title,detail,icon,time:'Den '+this.day});this.messages=this.messages.slice(0,13);
@@ -94,6 +105,7 @@ class Civilization {
   idle(a){a.mode='idle';a.purpose='';a.target=null;a.resource=null;a.choiceAt=this.seconds+rand(0.25,1.25);}
   decide(a){
     if(this.seconds<a.choiceAt)return;
+    this.syncStock();
     const need=needsDecision(a,this.food);
     if(need==='eat'){
       this.go(a,'eat',{x:rand(-2,2),z:rand(-2,2)},'Má hlad ('+Math.round(a.hunger)+' %) a jde se samostatně najíst.');return;
@@ -103,13 +115,34 @@ class Civilization {
       this.go(a,'rest',{x:rand(-3,3),z:rand(-3,3)},dark?'Je noc a chce se vyspat.':'Je unavený a potřebuje odpočinek.');return;
     }
     if(need==='social' && this.seekConversation(a))return;
-    if(!this.construction && this.shelters.length<1 && this.wood>=12){
-      this.wood-=12;this.construction={x:5.1,z:4.9,progress:0,agentId:a.id};
-      this.addEvent('Vzniká první stavba',a.name+' se rozhodl postavit přístřešek. Osada má dost dřeva.','⌂');
-      this.go(a,'build',this.construction,'Rozhodl se řešit nedostatek bydlení: staví první přístřešek.');return;
+    if(!this.construction){
+      const proposal=this.material.chooseBuilding();
+      if(proposal&&this.material.pay(proposal.recipe)){
+        this.construction={x:proposal.x,z:proposal.z,type:proposal.type,progress:0,agentId:a.id};
+        this.syncStock();
+        this.addEvent('Nová autonomní stavba',a.name+' začíná stavět: '+proposal.recipe.name+
+          '. Náklady byly skutečně odebrány z hromad materiálu.','⌂');
+        lifeEvent(a,this.day,'Zahájil stavbu',proposal.recipe.name);
+        this.go(a,'build',this.construction,'Vyhodnotil potřebu '+proposal.recipe.name+
+          ', zajistil dřevo a kámen a sám zahájil stavbu.');return;
+      }
     }
     if(this.construction && this.construction.agentId===a.id){
       this.go(a,'build',this.construction,'Chce dokončit rozestavěný přístřešek.');return;
+    }
+    // Material needs and farming precede optional work.
+    if(this.material.count('twig')>=5&&!this.material.baskets.length){
+      this.go(a,'weave',{x:2.8,z:2.4},
+        'Proutí lze splést do košíku, aby šlo potraviny bezpečně uskladnit.');return;
+    }
+    const farm=this.material.fields[0];
+    if(farm && !farm.planted && this.seeds>=1){
+      this.go(a,'plant',{x:farm.x,z:farm.z},
+        'Našel semena, připravené pole a chce je vysít.');return;
+    }
+    if(farm && farm.planted && farm.growth>=1){
+      this.go(a,'reap',{x:farm.x,z:farm.z},
+        'Úroda na poli dozrála. Rozhodl se ji sklidit.');return;
     }
     // Different personalities generate different priorities even under the same weather.
     if(this.shelters.length && this.wood>=12 && this.food>=12 && a.personality.curiosity>75 &&
@@ -125,15 +158,24 @@ class Civilization {
     // The world object is consulted ONLY to resolve a known identity for interaction.
     const knownBerry=chooseKnownResource(a,'berry',this.seconds);
     const knownTree=chooseKnownResource(a,'tree',this.seconds);
+    const knownStone=chooseKnownResource(a,'stone',this.seconds);
+    const knownApple=chooseKnownResource(a,'apple',this.seconds);
     const goKnown=(kind,remembered,reason)=>{
       if(!remembered)return false;
-      const type=kind==='berries'?'berry':'tree';
-      const actual=(type==='berry'?this.berries:this.trees).find(p=>p.id===remembered.id);
+      const type=kind==='berries'?'berry':kind==='stone'?'stone':kind==='apples'?'apple':'tree';
+      const sources={berry:this.berries,tree:this.trees,stone:this.stones,apple:this.apples};
+      const actual=sources[type].find(p=>p.id===remembered.id);
       if(!actual)return false;
       const source=remembered.origin==='heard'?'z vyprávění '+remembered.from:'z vlastního pozorování';
       this.go(a,kind,{x:remembered.x,z:remembered.z},reason+' O místě ví '+source+'.',actual);
       return true;
     };
+    if(knownApple && (this.food<30 || Math.random()<.22)){
+      if(goKnown('apples',knownApple,'Chce nasbírat jablka z nalezené jabloně.'))return;
+    }
+    if(this.material.structures.some(b=>b.type==='house') && this.stone<18 && knownStone){
+      if(goKnown('stone',knownStone,'Osada potřebuje kámen na skladiště a hospodářské budovy.'))return;
+    }
     if((gatherFood || (a.hunger>=70 && this.food===0)) && knownBerry){
       if(goKnown('berries',knownBerry,'Osada potřebuje potravu. Vybral známé místo se zdrojem.'))return;
     }
@@ -141,7 +183,8 @@ class Civilization {
       if(goKnown('wood',knownTree,'Potřebuje stavební materiál a vybavil si známý strom.'))return;
     }
     if(knownBerry && goKnown('berries',knownBerry,'Zvolil šetrný sběr ze známého naleziště.'))return;
-    if(knownTree && this.wood<25 && goKnown('wood',knownTree,'Zvolil již objevený strom.'))return;
+    if(knownStone && this.stone<26 && goKnown('stone',knownStone,'Potřebuje kámen na stavbu.'))return;
+    if(knownTree && this.wood<38 && goKnown('wood',knownTree,'Zvolil již objevený strom.'))return;
     this.go(a,'explore',chooseExplorationTarget(a,this.seconds),
       'Nezná žádný vhodný aktuální zdroj. Nejdřív musí oblast sám prozkoumat.');
   }
@@ -162,6 +205,21 @@ class Civilization {
     if(a.purpose==='eat'){
       this.work(a,'eating',3,'Jí ze společných zásob a doplňuje síly.');return;
     }
+    if(a.purpose==='weave'){this.work(a,'weaving',6,
+      'Plete košík z nasbíraného proutí.');return;}
+    if(a.purpose==='plant'){this.work(a,'planting',6,
+      'Vysévá skutečná nalezená semínka do připraveného pole.');return;}
+    if(a.purpose==='reap'){this.work(a,'reaping',7,
+      'Sklízí dozrálé obilí a sbírá nové osivo.');return;}
+    if(a.purpose==='stone'||a.purpose==='apples'){
+      const type=a.purpose==='stone'?'stone':'apple';
+      if(!a.resource||a.resource.stock<=0){
+        if(a.resource)learnOutcome(a,type,a.resource,0,this.seconds);
+        this.idle(a);return;
+      }
+      this.work(a,type==='stone'?'mining':'applepicking',type==='stone'?7:4,
+        type==='stone'?'Uvolňuje kámen z nalezeného ložiska.':'Sbírá jablka ze stromu.');return;
+    }
     if(a.purpose==='wood'){
       if(!a.resource || a.resource.stock<=0){
         if(a.resource)learnOutcome(a,'tree',a.resource,0,this.seconds);
@@ -179,23 +237,35 @@ class Civilization {
       this.work(a,'forage',2.3+rand(0,1),'Sbírá jedlé plody pro osadu.');return;
     }
     if(a.purpose==='returnwood'){
-      this.wood+=a.carry;a.carry=0;this.idle(a);
-      if(this.wood>=12 && this.shelters.length===0 && !this.construction)this.addEvent('Dostatek dřeva','V osadě je materiál na první přístřešek. Někdo může začít stavět.','♣');
+      this.material.add('wood',a.carry);
+      if(a.twigsCarry)this.material.add('twig',a.twigsCarry);
+      experienceSkill(a,'wood',a.carry);
+      a.twigsCarry=0;a.carry=0;a.carryType=null;this.syncStock();this.idle(a);
+      if(this.wood>=12&&!this.shelters.length&&!this.construction)this.addEvent(
+        'Dostatek dřeva','V hromadě je dost polen pro první dům.','♣');
       return;
     }
     if(a.purpose==='returnfood'){
-      this.food+=a.carry;a.carry=0;this.idle(a);return;
+      this.material.add(a.carryType||'berry',a.carry);
+      if(a.seedsCarry)this.material.add('seed',a.seedsCarry);
+      a.carry=0;a.carryType=null;a.seedsCarry=0;this.syncStock();this.idle(a);return;
+    }
+    if(a.purpose==='returnstone'){
+      this.material.add('stone',a.carry);
+      experienceSkill(a,'stone',a.carry);
+      a.carry=0;a.carryType=null;this.syncStock();this.idle(a);return;
     }
     if(a.purpose==='build'){
-      this.work(a,'building',11,'Staví přístřešek z nasbíraného dřeva.');return;
+      this.work(a,'building',14,
+        'Staví '+(RECIPES[this.construction?.type]?.name||'budovu')+' z nasbíraného materiálu.');return;
     }
     if(a.purpose==='rest'){this.work(a,'resting',6,'Odpočívá po práci v blízkosti osady.');return;}
     if(a.purpose==='explore'){if(this.seconds-this.lastScout>15){this.addEvent('Průzkum okolí',a.name+' prozkoumal další kus krajiny.','⌕');this.lastScout=this.seconds;}this.idle(a);}
   }
   completed(a){
     if(a.purpose==='eating'){
-      if(this.food>0){
-        this.food--;a.hunger=Math.max(0,a.hunger-76);a.mood=Math.min(100,a.mood+7);
+      if(this.material.consumeFood()){
+        this.syncStock();a.hunger=Math.max(0,a.hunger-76);a.mood=Math.min(100,a.mood+7);
         a.lastMeal=this.seconds;remember(a,'Najedl se ze zásob osady');
       }else{a.mood=Math.max(0,a.mood-8);remember(a,'Nenašel jídlo, když měl hlad');}
       this.idle(a);return;
@@ -221,19 +291,64 @@ class Civilization {
     if(a.purpose==='harvest'){
       const amount=Math.min(a.resource?.stock||0,3);if(a.resource)a.resource.stock-=amount;
       if(a.resource)learnOutcome(a,'tree',a.resource,amount,this.seconds);
-      a.carry=amount;remember(a,'Nasbíral dřevo pro osadu');
+      a.carry=amount;a.carryType='wood';a.twigsCarry=amount?1:0;
+      remember(a,'Nasbíral dřevo a proutí pro osadu');
       this.go(a,'returnwood',{x:0,z:0},'Nese '+amount+' jednotky dřeva do společných zásob.');return;
     }
     if(a.purpose==='forage'){
       const amount=Math.min(a.resource?.stock||0,4);if(a.resource)a.resource.stock-=amount;
       if(a.resource)learnOutcome(a,'berry',a.resource,amount,this.seconds);
-      a.carry=amount;remember(a,'Nasbíral potravu pro ostatní');
+      a.carry=amount;a.carryType='berry';a.seedsCarry=amount?1:0;
+      remember(a,'Nasbíral bobule a nalezl semínka');
       this.go(a,'returnfood',{x:0,z:0},'Nese nasbírané jídlo do společných zásob.');return;
     }
+    if(a.purpose==='mining'||a.purpose==='applepicking'){
+      const type=a.purpose==='mining'?'stone':'apple';
+      const amount=Math.min(a.resource?.stock||0,type==='stone'?3:4);
+      if(a.resource)a.resource.stock-=amount;
+      if(a.resource)learnOutcome(a,type,a.resource,amount,this.seconds);
+      a.carry=amount;a.carryType=type;
+      this.go(a,type==='stone'?'returnstone':'returnfood',{x:0,z:0},
+        'Nese '+amount+' kusy '+(type==='stone'?'kamene':'jablek')+' do skladu.');return;
+    }
+    if(a.purpose==='weaving'){
+      const basket=this.material.craftBasket(a.id);
+      if(basket){
+        experienceSkill(a,'craft',8);
+        lifeEvent(a,this.day,'Upletl košík','Použil pět jednotek proutí.');
+        this.addEvent('Ručně vyrobený košík',a.name+' upletl košík. Nové ovoce se do něj bude ukládat.','⌑');
+      }
+      this.idle(a);return;
+    }
+    if(a.purpose==='planting'){
+      const field=this.material.fields[0];
+      if(field&&this.material.plant(field.id,this.seconds)){
+        experienceSkill(a,'farm',3);
+        lifeEvent(a,this.day,'Zasel první pole','Použil semena získaná v přírodě.');
+        this.addEvent('Zaseté pole',a.name+' skutečně spotřeboval semínko a založil úrodu.','✿');
+      }
+      this.syncStock();this.idle(a);return;
+    }
+    if(a.purpose==='reaping'){
+      const field=this.material.fields[0],result=field&&this.material.harvest(field.id);
+      if(result){
+        experienceSkill(a,'farm',7);
+        lifeEvent(a,this.day,'Sklidil pole',result.berries+' porcí bobulí a '+result.seeds+' semen.');
+        this.addEvent('Sklizeň úrody',a.name+' sklidil '+result.berries+' porcí bobulí a nová semena.','❀');
+      }
+      this.syncStock();this.idle(a);return;
+    }
     if(a.purpose==='building' && this.construction){
-      this.shelters.push({x:this.construction.x,z:this.construction.z});
-      this.construction=null;remember(a,'Dokončil první přístřešek');
-      this.addEvent('První přístřešek je hotový',a.name+' dokončil první stavbu bez jakéhokoli příkazu hráče.','⌂');
+      const completed={...this.construction},type=completed.type;
+      const building=this.material.addStructure(type,completed.x,completed.z,a.id,this.seconds);
+      if(type==='house')this.shelters.push({x:completed.x,z:completed.z,type});
+      this.construction=null;
+      experienceSkill(a,'wood',4);
+      a.profile.occupation='Stavitel';
+      if(type==='house'&&!a.profile.home)a.profile.home=building.id;
+      lifeEvent(a,this.day,'Dokončil '+RECIPES[type].name,'Stavbu zaplatila osada svými zásobami.');
+      remember(a,'Dokončil '+RECIPES[type].name);
+      this.addEvent('Dokončená stavba',a.name+' bez příkazu hráče dokončil '+RECIPES[type].name+'.','⌂');
       this.idle(a);return;
     }
     if(a.purpose==='resting'){a.energy=Math.min(100,a.energy+68);this.idle(a);return;}
@@ -241,6 +356,16 @@ class Civilization {
   }
   update(dt){
     this.seconds+=dt;this.day=Math.floor(this.seconds/75)+1;
+    this.material.tick(dt,this.weather.kind);
+    const fuel=(this.material.structures.length||this.material.count('wood')>17)?
+      this.material.burnWood(this.seconds,this.weather.kind):null;
+    if(fuel&&this.seconds-this.lastFireEvent>12){
+      this.lastFireEvent=this.seconds;
+      this.addEvent('Vlastnosti paliva',
+        (fuel.roof?'Kryté':'Nekryté')+' poleno s vlhkostí '+Math.round(fuel.wet*100)+
+        ' % poskytlo '+fuel.heat+' % využitelného tepla.','♨');
+    }
+    this.syncStock();
     if(this.weather.kind!=='clear' && this.seconds>=this.weather.until){
       this.weather={kind:'clear',until:0};
       this.addEvent('Počasí se uklidnilo','Krajina se vrací k běžným podmínkám.','☼');
@@ -249,6 +374,7 @@ class Civilization {
       this.nextMeal+=75;
       const recovery=this.weather.kind==='rain'?6:this.weather.kind==='drought'?1:3;
       for(const b of this.berries)b.stock=Math.min(b.maxStock,b.stock+recovery);
+      for(const apple of this.apples)apple.stock=Math.min(apple.maxStock,apple.stock+(recovery>3?2:1));
       this.addEvent('Nový den','Začal další den. Jídlo už nespotřebovává osada hromadně: každý NPC jí podle vlastního hladu.','☼');
     }
     const night=(this.seconds%75)/75>.73;
@@ -256,7 +382,7 @@ class Civilization {
       this.lastNightNotice=this.day;this.addEvent('Přichází večer','Obyvatelé se postupně rozhodují, zda dokončit práci, setkat se, nebo jít odpočívat.','☾');
     }
     for(const a of this.agents){
-      const discoveries=observeNearby(a,{trees:this.trees,berries:this.berries},this.seconds,7.5);
+      const discoveries=observeNearby(a,{trees:this.trees,berries:this.berries,stones:this.stones,apples:this.apples},this.seconds,7.5);
       if(discoveries.length && this.seconds-this.lastDiscoveryReport>=12){
         const kind=discoveries.some(x=>x.type==='berry')?'jedlé plody':'stromy';
         this.addEvent('Nové místo na mapě',a.name+' sám objevil '+kind+'. Informaci zatím neznají ostatní.','⌕');
@@ -300,7 +426,12 @@ class Diorama {
     }groundGeo.setAttribute('color',new THREE.Float32BufferAttribute(vertices,3));groundGeo.computeVertexNormals();
     const land=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide}));land.receiveShadow=true;this.scene.add(land);
     const water=new THREE.Mesh(new THREE.PlaneGeometry(190,190),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
-    this.addCamp();this.treeModels=[];this.addForest();this.addBerries();this.addRocksAndGrass();this.addRain();this.people=[];this.pickables=[];
+    this.addCamp();this.treeModels=[];this.addForest();this.addBerries();
+    this.addRocksAndGrass();this.addDeposits();this.addRain();
+    this.inventoryVisuals=new MaterialRenderer(this.scene,terrainHeight);
+    this.buildingVisuals=new BuildingRenderer(this.scene,terrainHeight);
+    this.inventoryVisuals.sync(sim.material);
+    this.people=[];this.pickables=[];
     for(const agent of sim.agents){const group=this.makePerson(agent);this.scene.add(group);this.people.push(group);}
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
@@ -308,6 +439,37 @@ class Diorama {
     canvas.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
     canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];if(hit){chooseAgent(hit.object.userData.agentId);}});
     this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(container);this.resize();
+  }
+  addDeposits(){
+    // Resource nodes: trees are handled by the existing forest, but rocks and apples must
+    // have a 3D object at their true simulated coordinates.
+    const stone=this.mat('#777c7b'),moss=this.mat('#678c69');
+    for(const p of this.sim.stones){
+      const g=new THREE.Group();g.position.set(p.x,terrainHeight(p.x,p.z),p.z);
+      for(let i=0;i<4;i++){
+        const x=Math.sin(p.id*1.2+i)*.55,z=Math.cos(p.id*1.6+i)*.51;
+        const rock=this.mesh(new THREE.DodecahedronGeometry(.52+i*.07,0),
+          i%3===0?moss:stone,x,.27,z);
+        rock.scale.y=.61;g.add(rock);
+      }
+      this.scene.add(g);
+    }
+    const bark=this.mat('#6f5643'),leaves=this.mat('#59864e');
+    const fruit=this.mat('#c95d43',.55);
+    for(const p of this.sim.apples){
+      const g=new THREE.Group();g.position.set(p.x,terrainHeight(p.x,p.z),p.z);
+      const trunk=this.mesh(new THREE.CylinderGeometry(.22,.32,2.1,7),bark,0,1.08,0);g.add(trunk);
+      for(const [x,y,z] of [[-.58,2.37,0],[.65,2.55,.18],[0,3.05,-.3]]){
+        const crown=this.mesh(new THREE.IcosahedronGeometry(1.05,1),leaves,x,y,z);
+        crown.scale.y=.82;g.add(crown);
+      }
+      for(let i=0;i<7;i++){
+        const angle=i*2.399;
+        g.add(this.mesh(new THREE.SphereGeometry(.12,8,6),fruit,
+          Math.cos(angle)*.8,2.0+(i%3)*.39,Math.sin(angle)*.72));
+      }
+      this.scene.add(g);
+    }
   }
   addRain(){
     const count=280,coords=new Float32Array(count*6);this.rainCoords=coords;
@@ -484,6 +646,13 @@ class Diorama {
       const arm=this.mesh(new THREE.CylinderGeometry(.11,.11,.57,7),shirt,sign*.44,1.03,0);
       g.add(leg,arm);g.userData.legs.push(leg);g.userData.arms.push(arm);
     }
+    const carried=new THREE.Group();carried.position.set(.52,1.02,.15);
+    const carryColors={wood:'#936544',stone:'#929d9b',apple:'#cb654e',berry:'#5b6b9c'};
+    for(let i=0;i<5;i++){
+      const mesh=this.mesh(new THREE.DodecahedronGeometry(.13,0),this.mat('#95694d'),(i%2)*.2,Math.floor(i/2)*.19,0);
+      mesh.visible=false;carried.add(mesh);
+    }
+    g.add(carried);g.userData.carried=carried;g.userData.carryColors=carryColors;
     const halo=this.mesh(new THREE.RingGeometry(.55,.67,28),new THREE.MeshBasicMaterial({color:'#e8ffd1',side:THREE.DoubleSide,transparent:true,opacity:.85}),0,.11,0,false);
     halo.rotation.x=-Math.PI/2;halo.visible=false;g.add(halo);g.userData.halo=halo;
     const bubbleCanvas=document.createElement('canvas');bubbleCanvas.width=128;bubbleCanvas.height=64;
@@ -552,14 +721,24 @@ class Diorama {
       g.userData.hair.rotation.y=g.userData.head.rotation.y;
       g.userData.bubble.visible=a.purpose==='talking';
       g.userData.halo.visible=i===selectedAgent;
+      for(let k=0;k<g.userData.carried.children.length;k++){
+        const item=g.userData.carried.children[k];
+        item.visible=k<(a.carry||0);
+        item.material.color.set(g.userData.carryColors[a.carryType]||'#b49b73');
+      }
     });
     for(const tree of this.treeModels)if(tree.resource.stock<=0 && tree.model.scale.y>.32)tree.model.scale.y=.32;
-    if(this.sim.construction){
-      if(!this.constructionVisual){this.constructionVisual=this.addShelter(this.sim.construction.x,this.sim.construction.z,.05);announce('Obyvatelé zahájili stavbu prvního přístřešku.');}
-      const p=this.sim.construction.progress,model=this.constructionVisual;model.walls.scale.y=clamp(p*1.4,0,1);model.walls.position.y=.3+model.walls.scale.y*1.2;
-      model.roof.visible=p>.62;model.door.visible=p>.75;model.chimney.visible=p>.8;
+    this.inventoryRefresh=(this.inventoryRefresh||0)+time;
+    if(this.inventoryRefresh>.35){
+      this.inventoryRefresh=0;
+      this.inventoryVisuals.sync(this.sim.material);
+      this.buildingVisuals.sync(this.sim.material,this.sim.construction);
     }
-    if(this.sim.shelters.length && !this.built){this.built=this.sim.shelters.length;if(this.constructionVisual){this.scene.remove(this.constructionVisual.group);this.constructionVisual=null;}for(const s of this.sim.shelters)this.addShelter(s.x,s.z);announce('První přístřešek vyrostl z rozhodnutí NPC.');}
+    const actualHeat=this.sim.material.fire.heat;
+    const lit=actualHeat>0;
+    this.fire.visible=lit;
+    this.campLight.intensity=lit?(1.4+(1-daylight)*3)*actualHeat/100:0;
+    this.fire.scale.y=lit?(.3+actualHeat/130)*(1+Math.sin(this.timer*9)*.14):.01;
     this.controls.update();this.renderer.render(this.scene,this.camera);
   }
   resize(){const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h,false);}
@@ -568,12 +747,16 @@ let selectedAgent=0;
 const sim=new Civilization();
 let world;
 // Two real navigable page routes; transitions preserve the running simulation and WebGL instance.
-function pageFromLocation(){return location.pathname.startsWith('/prehled')?'overview':'map';}
+function pageFromLocation(){
+  return location.pathname.startsWith('/lide')?'people':
+    location.pathname.startsWith('/prehled')?'overview':'map';
+}
 function showPage(page,push=false){
-  const path=page==='overview'?'/prehled/':'/svet/';
+  const path=page==='overview'?'/prehled/':page==='people'?'/lide/':'/svet/';
   if(push)history.pushState({page},'',path);
   document.body.classList.toggle('page-map',page==='map');
   document.body.classList.toggle('page-overview',page==='overview');
+  document.body.classList.toggle('page-people',page==='people');
   for(const link of document.querySelectorAll('[data-page]')){
     if(link.dataset.page===page)link.setAttribute('aria-current','page');
     else link.removeAttribute('aria-current');
@@ -650,21 +833,129 @@ function drawPersonalKnowledgeMap(knowledge, person){
   ctx.font='10px sans-serif';ctx.fillText('Jen '+person.name+'ovy znalosti',12,h-12);
 }
 
+
+const materialNames={wood:'Dřevo',twig:'Proutí',stone:'Kámen',berry:'Bobule',
+  apple:'Jablka',seed:'Semínka',grain:'Obilí'};
+function renderMaterialLedger(){
+  const warehouse=sim.material;
+  const stats=warehouse.snapshot();
+  el('ledger-items').textContent=stats.total+' předmětů';
+  el('building-number').textContent=stats.buildings;
+  el('basket-number').textContent=stats.baskets;
+  el('field-number').textContent=stats.fields.length;
+  const cells=el('material-grid');cells.replaceChildren();
+  for(const [type,count] of Object.entries(stats.byType)){
+    const item=document.createElement('div');item.className='material-cell';
+    const ico=document.createElement('span');ico.className='material-icon';
+    ico.textContent=ITEM_INFO[type]?.icon||'•';
+    const value=document.createElement('strong');value.textContent=count;
+    const name=document.createElement('span');name.textContent=materialNames[type]||type;
+    item.append(ico,value,name);cells.appendChild(item);
+  }
+  const fire=stats.fire;
+  el('fire-status').textContent=fire.lastWood?
+    'Poslední poleno: '+Math.round(fire.lastWood.wet*100)+' % vlhkost → '+fire.lastWood.heat+' % tepla'+
+    (fire.lastWood.roof?' (uchované pod střechou)':' (venkovní zásoby)'):
+    'Zatím nebylo spáleno žádné poleno';
+  const list=el('building-list');list.replaceChildren();
+  if(!sim.material.structures.length){list.textContent='Obyvatelé teprve sbírají materiál pro první stavbu.';}
+  else for(const b of sim.material.structures){
+    const chip=document.createElement('span');chip.className='building-chip';
+    chip.textContent=RECIPES[b.type]?.name||b.type;
+    list.appendChild(chip);
+  }
+  if(sim.construction){
+    const chip=document.createElement('span');chip.className='building-chip';
+    chip.textContent='Staví se: '+RECIPES[sim.construction.type]?.name+
+      ' ('+Math.round(sim.construction.progress*100)+' %)';
+    list.appendChild(chip);
+  }
+}
+
+function renderLifePage(){
+  if(!document.body.classList.contains('page-people'))return;
+  const list=el('citizen-list');
+  if(!list.dataset.ready){
+    list.dataset.ready='yes';
+    for(const person of sim.agents){
+      const button=document.createElement('button');button.type='button';
+      button.className='citizen-option';button.dataset.person=person.id;
+      const icon=document.createElement('span');icon.className='avatar';icon.textContent=person.name[0];
+      const caption=document.createElement('span');caption.className='citizen-option-label';
+      const name=document.createElement('strong');name.textContent=person.profile.fullName;
+      const role=document.createElement('small');role.textContent=person.profile.origin;
+      caption.append(name,role);button.append(icon,caption);
+      button.addEventListener('click',()=>{chooseAgent(person.id);renderLifePage();});
+      list.append(button);
+    }
+  }
+  el('people-day').textContent='Den '+sim.day;
+  for(const button of list.children){
+    button.setAttribute('aria-pressed',Number(button.dataset.person)===selectedAgent?'true':'false');
+  }
+  const a=sim.agents[selectedAgent],card=makeLifeCard(a,sim);
+  if(!card)return;
+  el('life-fullname').textContent=card.fullName;
+  el('life-age').textContent=card.age+' let';
+  el('life-origin').textContent=card.origin;
+  el('life-description').textContent=card.description;
+  el('life-settlement').textContent=card.colony;
+  el('life-home').textContent=card.home;
+  el('life-role').textContent=card.role;
+  const taskNames={wood:'Hledá dřevo',harvest:'Sbírá dřevo',berries:'Hledá bobule',
+    stone:'Těží kámen',mining:'Těží kámen',apples:'Sklízí jablka',
+    applepicking:'Sbírá jablka',weaving:'Plete košík',plant:'Vysévá pole',
+    planting:'Sází osivo',reap:'Sklízí úrodu',reaping:'Sklízí obilí',
+    build:'Staví dům',building:'Stavba',explore:'Průzkum',
+    eat:'Jde jíst',eating:'Jí',talking:'Rozhovor',rest:'Odpočinek',
+    resting:'Spí',meet:'Setkání'};
+  el('life-task').textContent=taskNames[card.action]||card.action||'Rozhoduje se';
+  el('life-mood').textContent=card.mood+' %';
+  el('life-knowledge').textContent=card.knowledge;
+  el('life-biography').textContent=card.biography;
+  const skills=el('life-skills'),relations=el('life-relations'),timeline=el('life-timeline');
+  skills.replaceChildren();relations.replaceChildren();timeline.replaceChildren();
+  for(const skill of card.skills){
+    const row=document.createElement('div');row.className='life-line';
+    const name=document.createElement('span');name.textContent=skill.name;
+    const value=document.createElement('strong');value.textContent=skill.level+' / 100';
+    row.append(name,value);skills.appendChild(row);
+  }
+  for(const rel of card.relationships.slice(0,6)){
+    const row=document.createElement('div');row.className='life-line';
+    const name=document.createElement('span');name.textContent=rel.name;
+    const score=document.createElement('strong');score.textContent=rel.trust+' / 100';
+    row.append(name,score);relations.appendChild(row);
+  }
+  for(const event of card.timeline.slice(0,15)){
+    const row=document.createElement('div');row.className='life-timeline-entry';
+    const heading=document.createElement('strong');heading.textContent='Den '+event.day+' · '+event.event;
+    const body=document.createElement('small');body.textContent=event.detail;
+    row.append(heading,body);timeline.appendChild(row);
+  }
+}
 function renderUI(){
   el('people').textContent=sim.agents.length;el('wood').textContent=sim.wood;el('food').textContent=sim.food;
   el('m-people').textContent=sim.agents.length;el('m-wood').textContent=sim.wood;el('m-food').textContent=sim.food;
   el('day').textContent='Den '+sim.day;
-  const building=!!sim.construction,done=sim.shelters.length>0;
+  if(document.body.classList.contains('page-overview'))renderMaterialLedger();
+  renderLifePage();
+  const building=!!sim.construction,done=sim.material.structures.length>0;
   el('stage-tag').textContent=done?'PRVNÍ DOMOV':building?'VÝSTAVBA':'PRŮZKUM';
-  el('stage-title').textContent=done?'Osada má první přístřešek':building?'Obyvatelé staví přístřešek':'Hledání místa k životu';
-  el('stage-description').textContent=done?'Stavbu si sami naplánovali, zajistili materiál a dokončili. Simulace běží dál.':building?'Jeden z obyvatel se rozhodl využít společné zásoby dřeva a začal stavět.':'Obyvatelé samostatně hledají suroviny. Jakmile jich bude dost, některý začne stavět.';
-  el('progress-name').textContent=done?'První autonomní stavba dokončena':building?'Postup stavby':'Materiál na první přístřešek';
-  el('progress-number').textContent=done?'HOTOVO':building?Math.round(sim.construction.progress*100)+' %':Math.min(sim.wood,12)+' / 12';
-  el('build-progress').style.width=(done?100:building?sim.construction.progress*100:Math.min(sim.wood/12,1)*100)+'%';
+  el('stage-title').textContent=building?'Staví: '+RECIPES[sim.construction.type].name:
+    done?'Osada roste vlastními silami':'Hledání místa k životu';
+  el('stage-description').textContent=building?'Obyvatelé opravdu spotřebovali materiál a právě z něj stavějí.':
+    done?'Obyvatelé sami rozšiřují osadu. Zásoby, materiály a budovy jsou fyzicky evidované.':
+    'Obyvatelé hledají dřevo, kámen, jídlo, semena a další materiály.';
+  el('progress-name').textContent=building?'Postup stavby':done?'Hotové budovy':'Materiál na první dům';
+  el('progress-number').textContent=building?Math.round(sim.construction.progress*100)+' %':
+    done?sim.material.structures.length+' objektů':Math.min(sim.wood,12)+' / 12';
+  el('build-progress').style.width=(building?sim.construction.progress*100:done?100:
+    Math.min(sim.wood/12,1)*100)+'%';
   const a=sim.agents[selectedAgent];el('npc-avatar').textContent=a.name.charAt(0);el('npc-avatar').style.background='#'+new THREE.Color(a.color).getHexString();
   el('npc-name').textContent=a.name;
   el('map-npc-name').textContent=a.name;
-  const actions={wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
+  const actions={wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',stone:'Cestuje ke kameni',mining:'Těží kámen',apples:'Cestuje pro jablka',applepicking:'Sbírá jablka',returnstone:'Nese kámen',weave:'Jde uplést košík',weaving:'Plete košík',plant:'Jde sázet',planting:'Vysévá semena',reap:'Jde sklízet',reaping:'Sklízí úrodu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
   el('npc-role').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';el('npc-reason').textContent=a.reason;
   el('agent-state').textContent='ENERGIE '+Math.round(a.energy)+' %';
   el('map-npc-action').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';

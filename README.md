@@ -41,6 +41,23 @@ The environment features multiple conifer and broadleaf tree shapes, saplings, m
 
 **Acceptance:** GitHub CI and Vercel build verify syntax, modules and pure logic. Run-time rendering, spatial learning progression, NPC survival and performance on target Android devices require explicit acceptance separately. Production and `main` are unchanged.
 
+## MW-006 — Materials, autonomous buildings and biographies
+
+This Preview is a first physically grounded economy, not a finished settlement or adult-society simulator.
+
+- Every shared item has its own unique ID, type, container and 3D object: real logs, twigs, stones, berries, apples, seeds and grain (grain is reserved for future crops). NPCs show physically carried pieces before depositing them.
+- The origin of stock matters: wood is piled outside, food starts in a real crate, and baskets can be woven from 5 real twigs. Apples arriving after basket creation are stored in the basket.
+- Weather changes the moisture of exposed wood. Covered wood dries; each burned log supplies heat based on its moisture state and is removed from storage.
+- NPCs autonomously extract stone, gather apples and twigs, discover seeds, plant a real berry field and later harvest berries and new seeds. Species are kept consistent: seeds obtained from wild berries grow berries, not cereals.
+- Five building types (houses, warehouse, farm, community hall, workshop) have wood/stone material recipes and distinct 3D representations. Construction is triggered autonomously at a limited set of candidate plots once the prerequisites are met. This is not yet freeform urban planning.
+- New **`/lide/`** page: card for every NPC, with age at simulation start, origin, description, life biography, occupation, relationship scores, personal skills and a timeline of actually recorded actions.
+- Overview **`/prehled/`** includes a physical item ledger, basket and field counts, building register and last recorded wet/dry firewood heat result.
+- Unit tests validate conservation, distinct item identity, moisture, covering, crafting, sowing/harvesting, recipe costs and truthful life history.
+
+**Not implemented yet:** departures into tents, second settlements, diplomacy/trade/war, multi-generation families, health and mortality, persistent saves, full navigation mesh, 30 NPC × 2-year acceptance, sophisticated graphics or full material thermodynamics.
+
+Private adult-simulation and future self-hosted VPS roadmap: [docs/private-living-world-18plus.md](docs/private-living-world-18plus.md). A Vercel Preview is not a private hosting guarantee. Do not run public Production or migrate to VPS without explicit user instruction and access controls.
+
 ## Development
 
 ```bash

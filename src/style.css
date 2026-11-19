@@ -149,3 +149,73 @@
  .knowledge-stats span{font-size:8px}
  #knowledge-map{height:195px}
 }
+
+
+/* MW-006 — material provenance, complete biographies, separate people page. */
+.people-page{display:none}
+.page-people .workspace{display:block;overflow-y:auto;background:#101914}
+.page-people .scene-wrap,.page-people .dashboard{display:none}
+.page-people .people-page{display:block;max-width:1020px;margin:auto;padding:34px clamp(17px,5vw,58px) 60px}
+.people-top{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.people-top h1{font-family:Outfit,sans-serif;font-size:clamp(26px,3.3vw,37px);letter-spacing:-.04em;margin:8px 0 10px}
+.people-top p{font-size:12px;color:#acbeaf;max-width:590px;line-height:1.6}
+.citizen-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:23px 0}
+.citizen-option{display:flex;text-align:left;align-items:center;gap:10px;padding:13px;border:1px solid #344a39;border-radius:12px;background:#1b2b22;color:#ebf7e8}
+.citizen-option[aria-pressed="true"]{border-color:#a8d48e;background:#304a33}
+.citizen-option .avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:#b7cfa1;color:#1c2f22;font-weight:800;font-size:15px;flex:none}
+.citizen-option .citizen-option-label{min-width:0;display:flex;flex-direction:column;gap:4px}
+.citizen-option strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.citizen-option small{font-size:10px;color:#acc7aa}
+.life-card-full{border:1px solid #425d47;background:linear-gradient(125deg,#1c2a22,#17241f);border-radius:17px;padding:clamp(18px,3vw,30px)}
+.life-card-heading{display:flex;align-items:start;justify-content:space-between;gap:12px}
+.life-card-heading h2{font-size:27px;font-family:Outfit,sans-serif;letter-spacing:-.03em;margin:7px 0}
+.life-card-heading #life-origin{font-size:12px;color:#acc8aa}
+.age-pill{background:#304a38;border-radius:100px;color:#d5edcc;padding:8px 13px;font-size:11px;font-weight:800;white-space:nowrap}
+#life-description{font-size:13px;line-height:1.6;color:#b8cbb8;margin:20px 0}
+.life-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.life-details>div{border-radius:10px;border:1px solid #3d5042;background:#203027;padding:12px;display:flex;flex-direction:column;gap:7px}
+.life-details span{font-size:10px;color:#9aafa0}
+.life-details strong{font-size:12px;color:#ebf6e7}
+.life-columns{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:25px}
+.life-card-full h3{font-family:Outfit,sans-serif;font-size:17px;margin:0 0 13px}
+.life-line{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #34473b;padding:8px 0;color:#c7d7c2;font-size:12px}
+.life-line strong{color:#ebf4df}
+.life-biography{border-top:1px solid #405445;padding-top:22px;margin-top:25px}
+.life-biography p{font-size:13px;line-height:1.8;color:#c3d3c0}
+.life-timeline-entry{padding:11px 0 11px 16px;border-left:2px solid #618366;margin-left:5px;position:relative;font-size:12px;color:#b7cdb8}
+.life-timeline-entry:before{content:'';display:block;background:#b7d794;width:9px;height:9px;border-radius:50%;position:absolute;left:-5.5px;top:15px}
+.life-timeline-entry strong{display:block;font-size:12px;color:#e3f2d9;margin-bottom:4px}
+.life-timeline-entry small{display:block;line-height:1.5;color:#91a993;font-size:11px}
+.world-ledger{background:#1d2d24;border:1px solid #405b45;padding:16px;border-radius:14px;margin-top:19px}
+.ledger-header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ledger-header h2{font-family:Outfit,sans-serif;font-size:18px;letter-spacing:-.02em;margin:7px 0 0}
+.ledger-tag{font-size:10px;color:#def4d3;background:#37503d;border-radius:8px;padding:8px 10px;font-weight:800;white-space:nowrap}
+.material-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:17px 0}
+.material-cell{padding:10px 5px;border:1px solid #455a48;border-radius:8px;background:#293d2d;display:flex;flex-direction:column;text-align:center;gap:3px}
+.material-cell .material-icon{font-size:18px}
+.material-cell strong{color:#e3f5d9;font-family:Outfit,sans-serif;font-size:19px}
+.material-cell span:last-child{font-size:9px;color:#b1c5b4}
+.ledger-bottom{display:flex;gap:11px;flex-wrap:wrap;padding:11px 0;border-top:1px solid #38533d}
+.ledger-bottom span{font-size:11px;color:#aebfab}
+.ledger-bottom strong{color:#e2f5d8}
+.ledger-fire{display:flex;flex-direction:column;gap:7px;padding:12px;border-radius:9px;background:#304032;margin-top:7px}
+.ledger-fire span{font-size:10px;color:#b7c9b4}
+.ledger-fire strong{font-size:11px;color:#ecdec4}
+.ledger-buildings{padding-top:16px}
+.ledger-buildings>div{display:flex;gap:7px;flex-wrap:wrap;color:#a8baa9;font-size:11px;line-height:1.5;margin-top:10px}
+.building-chip{display:inline-flex;border:1px solid #547255;background:#2b4430;padding:6px 9px;border-radius:7px;font-size:10px;color:#daeecf}
+.material-map-label{position:absolute;z-index:2;bottom:23px;left:50%;transform:translateX(-50%);pointer-events:none;color:#e5f7df;background:#1d362e9e;border:1px solid #d2e6d136;padding:9px 13px;border-radius:8px;font-size:10px;letter-spacing:.06em;font-weight:700;text-align:center;max-width:320px}
+@media(max-width:720px){
+ .page-people .people-page{padding:18px 15px 40px}
+ .people-top h1{font-size:24px}
+ .citizen-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .citizen-option{padding:9px;gap:7px}
+ .citizen-option strong{font-size:10px}
+ .citizen-option .avatar{width:31px;height:31px}
+ .life-details{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .life-columns{grid-template-columns:1fr;gap:19px}
+ .life-card-full{padding:16px}
+ .material-map-label{bottom:80px;left:15%;right:15%;max-width:none;transform:none;font-size:9px}
+ .mobile-site-nav{justify-content:space-evenly}
+ .mobile-site-nav .mobile-nav-link{font-size:11px}
+}
