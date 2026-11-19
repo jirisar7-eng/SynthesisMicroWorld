@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {MaterialWorld} from '../src/material-world.js';
 import {
-  CITIZEN_RADIUS,solidFootprints,isBlocked,collides,segmentClear,
-  planWalk,advanceWalk,approachPoint,clearSpawn,groundDropPosition,footprintOverlaps
+  CITIZEN_RADIUS,solidFootprints,indexSolids,isBlocked,collides,segmentClear,
+  planWalk,advanceWalk,approachPoint,clearSpawn,groundDropPosition,footprintOverlaps,chooseCampPlot
 } from '../src/spatial-world.js';
 
 const box=(x,z,hx,hz)=>({shape:'box',x,z,hx,hz,id:'building'});
@@ -107,4 +107,24 @@ test('MW-007A-009: dynamic new obstacle invalidates old route instead of letting
   assert.ok(actor.x<-.9);
   const newPath=planWalk(actor,{x:4,z:0},newBuilding);
   assert.ok(newPath?.length>1);
+});
+
+test('MW-007A-010: collision buckets match exact world solids without skipping boundaries',()=>{
+  const solids=[box(3,1,2.4,1.5),circle(-5,-2,.8),circle(0,0,1.4)];
+  const indexed=indexSolids(solids);
+  for(let x=-10;x<=10;x+=.28)for(let z=-7;z<=7;z+=.34){
+    const p={x,z};
+    assert.equal(isBlocked(p,indexed),isBlocked(p,solids),
+      'Index missed a collision near '+x+','+z);
+  }
+  assert.equal(segmentClear({x:-8,z:0},{x:9,z:0},indexed),
+    segmentClear({x:-8,z:0},{x:9,z:0},solids));
+});
+
+test('MW-007A-011: autonomous camp location must fit entire tent on free terrain',()=>{
+  const obstacles=[circle(20,2,1),box(22,4,1,1),circle(24,1,.7)];
+  const site=chooseCampPlot({x:20,z:2},obstacles,()=>2);
+  assert.ok(site);
+  assert.ok(Math.hypot(site.x-20,site.z-2)<=6.01);
+  assert.ok(obstacles.every(o=>!footprintOverlaps(site.x,site.z,1.72,1.42,o,.38)));
 });
