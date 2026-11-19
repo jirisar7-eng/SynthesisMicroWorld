@@ -11,7 +11,7 @@ import {SocialDynamics} from './social-dynamics.js';
 import {createGroundTexture} from './ground-details.js';
 import {createForestPatches,createTrampledCamp,createGroundClutter} from './terrain-details.js';
 import {loadSpeed} from './carry-poses.js';
-import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition} from './spatial-world.js';
+import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot} from './spatial-world.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
   learnOutcome, exchangeKnowledge, decision, knowledgeSummary, episode
@@ -211,7 +211,8 @@ class Civilization {
       const place=this.social.canLeave(a,{
         day:this.day,time:this.seconds,wood:this.wood,food:this.food,height:terrainHeight
       });
-      if(place&&this.social.beginDeparture(a,place,this.seconds)){
+      const campPlace=place?chooseCampPlot(place,solidFootprints(this),terrainHeight):null;
+      if(campPlace&&this.social.beginDeparture(a,campPlace,this.seconds)){
         this.addEvent('Rozhodnutí odejít',
           a.name+' je dlouhodobě nespokojený. Rozhodl se na čas opustit osadu.','↗');
         lifeEvent(a,this.day,'Rozhodl se odejít',
