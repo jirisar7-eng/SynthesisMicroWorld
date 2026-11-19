@@ -473,12 +473,14 @@ class Civilization {
   update(dt){
     this.seconds+=dt;this.day=Math.floor(this.seconds/75)+1;
     this.material.tick(dt,this.weather.kind);
-    const trailStats=this.paths.summary();
-    if(trailStats.established>=9&&this.seconds-this.lastPathReport>30){
+    if(this.seconds-this.lastPathReport>30){
+      const trailStats=this.paths.summary();
+      if(trailStats.established<9){this.lastPathReport=this.seconds;}else{
       this.lastPathReport=this.seconds;
       this.addEvent('Vznikají vyšlapané pěšiny',
         'Opakovaný pohyb obyvatel už vytvořil '+trailStats.established+
         ' viditelných částí cesty. Nikdo ji nekreslil ručně.','⌁');
+      }
     }
     const fuel=(this.material.structures.length||this.material.count('wood')>17)?
       this.material.burnWood(this.seconds,this.weather.kind):null;
@@ -559,6 +561,7 @@ class Diorama {
     const water=new THREE.Mesh(new THREE.PlaneGeometry(190,190),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
     this.addCamp();this.treeModels=[];this.addForest();this.addBerries();
     this.addRocksAndGrass();this.addDeposits();this.addRain();
+    this.pathVisuals=new FootpathRenderer(this.scene,terrainHeight);
     this.inventoryVisuals=new MaterialRenderer(this.scene,terrainHeight);
     this.buildingVisuals=new BuildingRenderer(this.scene,terrainHeight);
     this.inventoryVisuals.sync(sim.material);
@@ -854,11 +857,12 @@ class Diorama {
       g.userData.halo.visible=i===selectedAgent;
       for(let k=0;k<g.userData.carried.children.length;k++){
         const item=g.userData.carried.children[k];
-        item.visible=k<(a.carry||0);
+        item.visible=false; // Individually tracked cargo has visible meshes in MaterialRenderer.
         item.material.color.set(g.userData.carryColors[a.carryType]||'#b49b73');
       }
     });
     for(const tree of this.treeModels)if(tree.resource.stock<=0 && tree.model.scale.y>.32)tree.model.scale.y=.32;
+    this.pathVisuals.update(this.sim.paths,this.sim.seconds);
     this.inventoryRefresh=(this.inventoryRefresh||0)+time;
     if(this.inventoryRefresh>.35){
       this.inventoryRefresh=0;
@@ -974,6 +978,10 @@ function renderMaterialLedger(){
   el('building-number').textContent=stats.buildings;
   el('basket-number').textContent=stats.baskets;
   el('field-number').textContent=stats.fields.length;
+  if(el('carried-number'))el('carried-number').textContent=stats.carried;
+  if(el('site-number'))el('site-number').textContent=stats.atSite;
+  if(el('trail-number'))el('trail-number').textContent=sim.paths.summary().trails;
+  if(el('logistics-number'))el('logistics-number').textContent=stats.logistics.delivered+stats.logistics.constructionDeliveries;
   const cells=el('material-grid');cells.replaceChildren();
   for(const [type,count] of Object.entries(stats.byType)){
     const item=document.createElement('div');item.className='material-cell';
@@ -1037,7 +1045,10 @@ function renderLifePage(){
     stone:'Těží kámen',mining:'Těží kámen',apples:'Sklízí jablka',
     applepicking:'Sbírá jablka',weaving:'Plete košík',plant:'Vysévá pole',
     planting:'Sází osivo',reap:'Sklízí úrodu',reaping:'Sklízí obilí',
-    build:'Staví dům',building:'Stavba',explore:'Průzkum',
+    build:'Staví budovu',building:'Stavba',
+    pickupBuild:'Nabírá stavební materiál',deliverBuild:'Nese materiál na stavbu',
+    pickupStore:'Přebírá zásoby',deliverStore:'Stěhuje zásoby do skladiště',
+    assistBuild:'Jde pomoci staviteli',assisting:'Pomáhá stavět',explore:'Průzkum',
     eat:'Jde jíst',eating:'Jí',talking:'Rozhovor',rest:'Odpočinek',
     resting:'Spí',meet:'Setkání'};
   el('life-task').textContent=taskNames[card.action]||card.action||'Rozhoduje se';
@@ -1069,6 +1080,10 @@ function renderUI(){
   el('people').textContent=sim.agents.length;el('wood').textContent=sim.wood;el('food').textContent=sim.food;
   el('m-people').textContent=sim.agents.length;el('m-wood').textContent=sim.wood;el('m-food').textContent=sim.food;
   el('day').textContent='Den '+sim.day;
+  if(document.body.classList.contains('page-map')){
+    if(el('map-trails'))el('map-trails').textContent=sim.paths.summary().trails;
+    if(el('map-hauls'))el('map-hauls').textContent=sim.material.logistics.constructionDeliveries;
+  }
   if(document.body.classList.contains('page-overview'))renderMaterialLedger();
   renderLifePage();
   const building=!!sim.construction,done=sim.material.structures.length>0;
