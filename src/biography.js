@@ -21,6 +21,7 @@ export function initializeBiography(agent,index){
     description:descriptions[index%descriptions.length],
     bornDay:0,settlement:'První osada',home:null,
     occupation:'Neurčeno',
+    birthYear:-(20+index*3),genealogy:{parentIds:[],partnerId:null,childIds:[]},
     belongings:[],
     achievements:[],
     timeline:[{day:1,event:'Příchod do MicroWorldu',detail:'Dorazil mezi zakladatele nové osady.'}],
@@ -76,7 +77,7 @@ export function makeLifeCard(agent,sim){
     livingState:agent.mode,action:agent.purpose,reason:agent.reason,
     colony:p.settlement,home:home?home.id:(p.home||'Žádné trvalé bydlení'),
     role:p.occupation,health:'Zdravotní systém zatím není simulován',
-    hunger:Math.round(agent.hunger),energy:Math.round(agent.energy),
+    hunger:Math.round(agent.hunger),thirst:Math.round(agent.thirst||0),energy:Math.round(agent.energy),
     loneliness:Math.round(agent.socialNeed),mood:Math.round(agent.mood),
     personality:{...agent.personality},skills,relationships:relationList,
     inventory:(p.belongings||[]).slice(),carried:agent.carry||0,
@@ -85,6 +86,8 @@ export function makeLifeCard(agent,sim){
     socialStatus:agent.social?.status||'resident',
     frustration:Math.round(agent.social?.frustration||0),
     socialHistory:agent.social?.grievances?.slice()||[],
-    departures:p.departures,day:sim.day
+    departures:p.departures,day:sim.day,
+    genealogy:p.genealogy||{parentIds:[],partnerId:null,childIds:[]},
+    alive:agent.alive!==false
   };
 }
