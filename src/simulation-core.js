@@ -45,7 +45,14 @@ function points(count,minR,maxR,exclude=0,sampler=rng){
 }
 
 class Civilization {
+  /** Independent, serializable PRNG: same seed and actions yield same decisions. */
+  random(){
+    this.seedState=(Math.imul(this.seedState,1664525)+1013904223)>>>0;
+    return this.seedState/4294967296;
+  }
+  this.rand(min,max){return min+this.random()*(max-min);}
   constructor(){
+    this.seedState=217;
     this.seconds=0;this.day=1;this.material=new MaterialWorld();
     this.wood=0;this.stone=0;this.food=14;this.shelters=[];this.construction=null;
     this.syncStock();this.lastFireRecord=null;this.lastFireEvent=-100;
@@ -70,7 +77,7 @@ class Civilization {
       const p=this.trees[(i*7+3)%this.trees.length],angle=i*2.399963229728;
       return {id:i,x:p.x+Math.cos(angle)*2.2,z:p.z+Math.sin(angle)*2.2,yaw:angle};
     });
-    this.agents=names.map((name,i)=>initializeBiography(initCognition(initializeLife({id:i,name,x:rand(-2.8,2.8),z:rand(-2.8,2.8),energy:75+rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,carryType:null,workRemaining:0,workTotal:0,choiceAt:0,speed:2+rand(0,.55),color:colors[i]},i)),i));
+    this.agents=names.map((name,i)=>initializeBiography(initCognition(initializeLife({id:i,name,x:this.rand(-2.8,2.8),z:this.rand(-2.8,2.8),energy:75+this.rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,carryType:null,workRemaining:0,workTotal:0,choiceAt:0,speed:2+this.rand(0,.55),color:colors[i]},i)),i));
     this.social=new SocialDynamics();
     for(const agent of this.agents){agent.alive=true;agent.health=100;agent.sex=agent.id%2===0?'female':'male';}
     // No citizen is born inside the campfire, a crate or another solid.
@@ -120,7 +127,7 @@ class Civilization {
   }
   beginConversation(a,b){
     const id=++this.meetingSeq;
-    const x=rand(-2.7,2.7),z=rand(-3,3);
+    const x=this.rand(-2.7,2.7),z=this.rand(-3,3);
     this.meetings.set(id,{first:a.id,second:b.id,ready:new Set(),done:false});
     a.conversation=id;b.conversation=id;
     this.go(a,'meet',{x:x-.45,z},'Chce si popovídat s '+b.name+' a posílit vztahy.');
@@ -172,7 +179,7 @@ class Civilization {
       a.carry=0;a.carryType=null;
     }
     a.mode='idle';a.purpose='';a.target=null;a.resource=null;a.waypoints=[];
-    a.choiceAt=this.seconds+rand(.25,1.25);
+    a.choiceAt=this.seconds+this.rand(.25,1.25);
   }
   startConstructionTrip(a){
     const project=this.construction;
@@ -250,7 +257,7 @@ class Civilization {
         this.go(a,'tentEat',{x:camp.x,z:camp.z},
           'Má vlastní jídlo v táboře a rozhodl se najíst.');return;
       }
-      this.go(a,'campWander',{x:camp.x+rand(-1.6,1.6),z:camp.z+rand(-1.6,1.6)},
+      this.go(a,'campWander',{x:camp.x+this.rand(-1.6,1.6),z:camp.z+this.rand(-1.6,1.6)},
         'Chce být nějaký čas sám. Odpočívá a přemýšlí v táboře.');return;
     }
     if(a.social?.status==='resident'&&!this.construction){
@@ -276,7 +283,7 @@ class Civilization {
           'Má žízeň ('+Math.round(a.thirst)+' %) a jde ke známému skutečnému prameni.',source);
         return;
       }
-      this.go(a,'explore',chooseExplorationTarget(a,this.seconds),
+      this.go(a,'explore',chooseExplorationTarget(a,this.seconds,()=>this.random()),
         'Nezná pitnou vodu a má žízeň. Hledá vlastní cestou nový zdroj.');
       return;
     }
@@ -290,7 +297,7 @@ class Civilization {
     }
     const dark=(this.seconds%75)/75>.72 || (this.seconds%75)/75<.11;
     if(need==='rest'||(dark && a.energy<76)){
-      this.go(a,'rest',{x:rand(-3,3),z:rand(-3,3)},dark?'Je noc a chce se vyspat.':'Je unavený a potřebuje odpočinek.');return;
+      this.go(a,'rest',{x:this.rand(-3,3),z:this.rand(-3,3)},dark?'Je noc a chce se vyspat.':'Je unavený a potřebuje odpočinek.');return;
     }
     // Childcare is an emergent survival job, not a free background buff:
     // caretakers physically fetch the exact food item or spring-water bottle.
@@ -357,12 +364,12 @@ class Civilization {
     if(this.construction &&
       this.construction.phase!=='survey' &&
       !this.construction.assistantId && a.id!==this.construction.agentId&&a.energy>42 &&
-      Math.random()<.22){
+      this.random()<.22){
       this.construction.assistantId=a.id;
       this.go(a,'assistBuild',this.construction,'Dobrovolně pomáhá se společnou stavbou.');return;
     }
     // Covered warehouse generates real hauling jobs to relocate exposed wood.
-    if(!this.construction && this.material.nearestRoofedStore() && Math.random()<.28){
+    if(!this.construction && this.material.nearestRoofedStore() && this.random()<.28){
       const move=this.material.planStockTransfer(4);
       if(move){
         this.go(a,'pickupStore',move.source,
@@ -371,7 +378,7 @@ class Civilization {
       }
     }
     // Abandoned items can be rescued and individually carried home.
-    if(a.social?.status==='resident'&&!this.construction&&Math.random()<.27){
+    if(a.social?.status==='resident'&&!this.construction&&this.random()<.27){
       const lost=this.material.recoverable();
       if(lost){
         this.go(a,'pickupDropped',lost.source,
@@ -395,14 +402,14 @@ class Civilization {
     }
     // Different personalities generate different priorities even under the same weather.
     if(this.shelters.length && this.wood>=12 && this.food>=12 && a.personality.curiosity>75 &&
-      Math.random()<(a.personality.curiosity-60)/60){
-      this.go(a,'explore',chooseExplorationTarget(a,this.seconds),
+      this.random()<(a.personality.curiosity-60)/60){
+      this.go(a,'explore',chooseExplorationTarget(a,this.seconds,()=>this.random()),
         'Ze své zvědavosti hledá neznámé místo; neví předem, co tam najde.');return;
     }
     const urgentFood=this.food<9+this.cooperation/20;
     const foragers=this.agents.filter(p=>p.id!==a.id && (p.purpose==='berries'||p.purpose==='returnfood')).length;
     const cooperativeSlots=Math.max(1,Math.round(this.cooperation/35));
-    const gatherFood=(urgentFood && foragers<cooperativeSlots) || (foragers<1 && this.cooperation>=35) || (this.wood>7 && Math.random()<0.27);
+    const gatherFood=(urgentFood && foragers<cooperativeSlots) || (foragers<1 && this.cooperation>=35) || (this.wood>7 && this.random()<0.27);
     // A citizen may select resources ONLY from his or her own memories.
     // The world object is consulted ONLY to resolve a known identity for interaction.
     const knownBerry=chooseKnownResource(a,'berry',this.seconds);
@@ -419,7 +426,7 @@ class Civilization {
       this.go(a,kind,{x:remembered.x,z:remembered.z},reason+' O místě ví '+source+'.',actual);
       return true;
     };
-    if(knownApple && (this.food<30 || Math.random()<.22)){
+    if(knownApple && (this.food<30 || this.random()<.22)){
       if(goKnown('apples',knownApple,'Chce nasbírat jablka z nalezené jabloně.'))return;
     }
     if(this.material.structures.some(b=>b.type==='house') && this.stone<18 && knownStone){
@@ -428,13 +435,13 @@ class Civilization {
     if((gatherFood || (a.hunger>=70 && this.food===0)) && knownBerry){
       if(goKnown('berries',knownBerry,'Osada potřebuje potravu. Vybral známé místo se zdrojem.'))return;
     }
-    if(knownTree && (this.shelters.length===0 || (this.wood<5 && Math.random()*100>this.nature/2) || (this.nature<70 && (this.wood<25 || Math.random()*100>this.nature)))){
+    if(knownTree && (this.shelters.length===0 || (this.wood<5 && this.random()*100>this.nature/2) || (this.nature<70 && (this.wood<25 || this.random()*100>this.nature)))){
       if(goKnown('wood',knownTree,'Potřebuje stavební materiál a vybavil si známý strom.'))return;
     }
     if(knownBerry && goKnown('berries',knownBerry,'Zvolil šetrný sběr ze známého naleziště.'))return;
     if(knownStone && this.stone<26 && goKnown('stone',knownStone,'Potřebuje kámen na stavbu.'))return;
     if(knownTree && this.wood<38 && goKnown('wood',knownTree,'Zvolil již objevený strom.'))return;
-    this.go(a,'explore',chooseExplorationTarget(a,this.seconds),
+    this.go(a,'explore',chooseExplorationTarget(a,this.seconds,()=>this.random()),
       'Nezná žádný vhodný aktuální zdroj. Nejdřív musí oblast sám prozkoumat.');
   }
   arrived(a){
@@ -660,7 +667,7 @@ class Civilization {
         remember(a,'Známý strom byl vyčerpaný');
         this.idle(a);return;
       }
-      this.work(a,'harvest',2.8+rand(0,1),'Sbírá dřevo z nalezeného stromu.');return;
+      this.work(a,'harvest',2.8+this.rand(0,1),'Sbírá dřevo z nalezeného stromu.');return;
     }
     if(a.purpose==='berries'){
       if(!a.resource || a.resource.stock<=0){
@@ -668,7 +675,7 @@ class Civilization {
         remember(a,'Na známém místě nebyly plody');
         this.idle(a);return;
       }
-      this.work(a,'forage',2.3+rand(0,1),'Sbírá jedlé plody pro osadu.');return;
+      this.work(a,'forage',2.3+this.rand(0,1),'Sbírá jedlé plody pro osadu.');return;
     }
     if(a.purpose==='returnwood'){
       this.material.deliver(a);
