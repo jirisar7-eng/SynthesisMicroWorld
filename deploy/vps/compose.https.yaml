@@ -1,0 +1,13 @@
+# Optional HTTPS edge membership. Applied only after READ_ONLY DNS and Caddy checks.
+# Preserves MicroWorld loopback binding from compose.yaml; never touches caddy_proxy.
+services:
+  web:
+    networks:
+      microworld_private: {}
+      synthesis_edge:
+        aliases:
+          - microworld-web
+networks:
+  synthesis_edge:
+    name: synthesis-edge-net
+    external: true
