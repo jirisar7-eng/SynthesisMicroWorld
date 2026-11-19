@@ -111,6 +111,12 @@ function inTransit(c,item,index){
     1.10+layer*.22+(item.type==='apple'?.05:0),
     hash(item.id)*TWO_PI,.85+jitter(item.id*17,.08));
 }
+/** One logical slot stream for mixed fruit in one crate/basket or items carried together. */
+export function stockSlotGroup(item,container){
+  if(['carry','basket','crate','tentStorage'].includes(container?.kind))return 'all';
+  if(container?.kind==='shelves'&&['berry','apple','grain','seed'].includes(item.type))return 'food';
+  return item.type;
+}
 export function layoutStockItem(item,container,index){
   if(!container||!item)return {x:0,z:0,height:0,yaw:0,size:1,tilt:0,roll:0};
   const n=Math.max(0,Math.floor(index||0));
