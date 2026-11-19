@@ -76,10 +76,8 @@ function newborn(world,parentA,parentB,day){
   return {kind:'birth',day,id,parents:[parentA.id,parentB.id],name:childName};
 }
 
-/** One physically meaningful daily update; no random forced pregnancies.
- * Food aid spends a real unique inventory object. Water supply/carrying for
- * toddlers still requires a later physical logistics sub-system, so hydration
- * is marked as outstanding rather than magically resetting to full.
+/** One deterministic demography update each day. Children's hunger and thirst
+ * are deliberately not changed here: real caregiver jobs move exact-ID goods.
  */
 export function populationDay(world,day){
   const people=world.agents,events=[];
@@ -101,18 +99,8 @@ export function populationDay(world,day){
       a.health=Math.max(0,a.health-starvation-dehydration-old);
     }else{
       // Dependency is explicit: children need adults, not independent jobs.
-      const caretakers=familyOf(a,people).parents.filter(isLiving);
-      const availableFood=world.material.findFoodSource();
-      // Food is actually consumed; not teleported into a second inventory.
-      if(caretakers.length&&availableFood&&a.hunger>=45&&
-         caretakers.some(parent=>Math.hypot(parent.x-a.x,parent.z-a.z)<=8)){
-        const consumed=world.material.consumeFoodFrom(availableFood.container.id);
-        if(consumed){
-          a.hunger=Math.max(0,a.hunger-62);
-          a.health=Math.min(100,a.health+2);
-          events.push({kind:'care',day,id:a.id,resourceId:consumed.id,caregivers:caretakers.map(p=>p.id)});
-        }
-      }
+      // Needs are deliberately NOT satisfied here: caregivers must transport
+      // a genuine food ID or bottle of spring water and physically reach the child.
       if(a.hunger>96||a.thirst>99)a.health=Math.max(0,a.health-3);
     }
     if(a.health<=0){
