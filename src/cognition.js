@@ -62,7 +62,10 @@ export function observeNearby(agent, { trees = [], berries = [], stones = [], ap
   const found = [];
   for (const [type, sources] of [['tree', trees], ['berry', berries], ['stone', stones], ['apple', apples], ['spring', springs]]) {
     for (const source of sources) {
-      if (distance(agent, source) > radius) continue;
+      // A visible water glint/stream can be noticed farther away than fruit
+      // or mineral deposits, while the NPC still has to physically reach it.
+      const sight=type==='spring'?18:radius;
+      if (distance(agent, source) > sight) continue;
       const key = type + ':' + source.id;
       const former = c.resources[key];
       if (!former) {
