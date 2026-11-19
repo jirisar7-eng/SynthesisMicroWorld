@@ -1091,6 +1091,10 @@ function renderMaterialLedger(){
   el('building-number').textContent=stats.buildings;
   el('basket-number').textContent=stats.baskets;
   el('field-number').textContent=stats.fields.length;
+  const socialStats=sim.social.summary(sim.agents);
+  if(el('community-tension'))el('community-tension').textContent=socialStats.averageTension+' %';
+  if(el('community-camps'))el('community-camps').textContent=socialStats.camps;
+  if(el('community-away'))el('community-away').textContent=socialStats.away;
   if(el('carried-number'))el('carried-number').textContent=stats.carried;
   if(el('site-number'))el('site-number').textContent=stats.atSite;
   if(el('trail-number'))el('trail-number').textContent=sim.paths.summary().trails;
@@ -1167,6 +1171,10 @@ function renderLifePage(){
   el('life-task').textContent=taskNames[card.action]||card.action||'Rozhoduje se';
   el('life-mood').textContent=card.mood+' %';
   el('life-knowledge').textContent=card.knowledge;
+  el('life-tension').textContent=card.frustration+' %';
+  const socialLabels={resident:'Žije v osadě',preparing:'Připravuje se na odchod',
+    travelling:'Stěhuje se',camping:'Žije v samostatném stanu',returning:'Vrací se domů'};
+  el('life-community-status').textContent=socialLabels[card.socialStatus]||card.socialStatus;
   el('life-biography').textContent=card.biography;
   const skills=el('life-skills'),relations=el('life-relations'),timeline=el('life-timeline');
   skills.replaceChildren();relations.replaceChildren();timeline.replaceChildren();
