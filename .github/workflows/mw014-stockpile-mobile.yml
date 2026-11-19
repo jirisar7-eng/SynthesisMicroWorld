@@ -26,6 +26,8 @@ jobs:
           node-version: "24"
       - name: Install
         run: npm install --no-audit --no-fund --ignore-scripts --no-package-lock
+      - name: Validate isolated web-only deployment script
+        run: bash -n deploy/vps/mw011/web-only-mw014.sh
       - name: Simulation and physical storage tests
         run: npm test
       - name: Browser compilation
@@ -37,3 +39,38 @@ jobs:
           grep -Fq 'id="map-agent-peek"' dist/svet/index.html || grep -Fq 'id="map-agent-peek"' dist/index.html
           grep -Fq 'id="visitor-panel"' dist/svet/index.html || grep -Fq 'id="visitor-panel"' dist/index.html
           echo MW014_STATIC_UI_PASS
+      - name: Chromium 3D and mobile inspector smoke
+        env:
+          MW011_RELEASE: mw014-ci
+          MW011_HOST_PORT: "18585"
+        run: |
+          set -euo pipefail
+          stack=(docker compose -f deploy/vps/mw011/compose.yaml)
+          "${stack[@]}" build sim web
+          trap '"${stack[@]}" down >/dev/null 2>&1 || true' EXIT
+          "${stack[@]}" up -d --no-build sim web
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 3 http://127.0.0.1:18585/healthz >/dev/null 2>&1; then break;fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:18585/api/world -o /dev/null
+          timeout 105s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-angle=swiftshader \
+            --window-size=390,844 --force-device-scale-factor=1 \
+            --virtual-time-budget=4500 --dump-dom \
+            http://127.0.0.1:18585/svet/ > /tmp/mw014-mobile.html 2>/tmp/mw014-chrome.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,sys
+          html=Path('/tmp/mw014-mobile.html').read_text(errors='replace')
+          error=re.search(r'MW3D-(?:RUNTIME|WEBGL).*?(?=</code>)',html,re.S)
+          if error:
+              print('BROWSER_3D_FAILURE:',error.group()[:600])
+              sys.exit(1)
+          assert re.search(r'<div id="scene">\s*<canvas',html),'3D scene did not initialize'
+          assert re.search(r'<body[^>]*remote-world',html),'Server-authoritative mode not active'
+          for target in ('visitor-panel','map-agent-peek'):
+              tag=re.search(r'<details[^>]+id="'+target+r'"[^>]*>',html)
+              assert tag and ' open' not in tag.group(),target+' must be collapsed on mobile'
+          print('MW014_MOBILE_3D_PASS: live scene drawn, panels collapsed, server authoritative')
+          PY
