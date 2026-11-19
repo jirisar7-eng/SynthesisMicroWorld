@@ -1,0 +1,39 @@
+name: MW-014 Stockpile and Mobile UI
+on:
+  push:
+    branches: [feature/mw-014-mobile-observer-ui]
+  pull_request:
+    paths:
+      - 'src/stockpile-layout.js'
+      - 'src/material-world.js'
+      - 'src/main.js'
+      - 'src/style.css'
+      - 'index.html'
+      - 'tests/stockpile-layout.test.js'
+      - '.github/workflows/mw014-stockpile-mobile.yml'
+permissions:
+  contents: read
+jobs:
+  tests-and-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+      - name: Install
+        run: npm install --no-audit --no-fund --ignore-scripts --no-package-lock
+      - name: Simulation and physical storage tests
+        run: npm test
+      - name: Browser compilation
+        env:
+          SKIP_POLYHAVEN_ASSETS: "1"
+        run: npm run build -- --target es2022
+      - name: Browser output contains mobile drawers
+        run: |
+          grep -Fq 'id="map-agent-peek"' dist/svet/index.html || grep -Fq 'id="map-agent-peek"' dist/index.html
+          grep -Fq 'id="visitor-panel"' dist/svet/index.html || grep -Fq 'id="visitor-panel"' dist/index.html
+          echo MW014_STATIC_UI_PASS
