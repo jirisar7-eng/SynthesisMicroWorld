@@ -70,8 +70,15 @@ export function restoreWorld(sim,json){
   sim.meetings=new Map();
   for(const agent of sim.agents){
     agent.conversation=null;
-    sim.idle(agent);
-    agent.choiceAt=sim.seconds+.5;
+    if(agent.alive===false){
+      agent.mode='deceased';agent.purpose='';agent.target=null;agent.waypoints=[];
+    }else if((agent.profile?.age??18)<18){
+      agent.mode='dependent';agent.purpose='childhood';
+      agent.target=null;agent.waypoints=[];agent.choiceAt=Infinity;
+    }else{
+      sim.idle(agent);
+      agent.choiceAt=sim.seconds+.5;
+    }
     if(agent.cognition&&!Number.isFinite(agent.cognition.lastScan))
       agent.cognition.lastScan=-100;
   }
