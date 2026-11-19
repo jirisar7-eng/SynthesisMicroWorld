@@ -1,4 +1,4 @@
-import {layoutStockItem,stockSlotGroup} from './stockpile-layout.js';
+import {layoutStockItem,stockSlotGroup,stockyardOffset} from './stockpile-layout.js';
 
 /**
  * MW-006: physically accounted settlement materials.
@@ -50,21 +50,75 @@ export class MaterialWorld {
     this.fields=[];
     this.tents=[];
     this.projects=new Map();this.nextProjectId=1;
-    this.logistics={collected:0,delivered:0,transported:0,constructionDeliveries:0};
+    this.logistics={collected:0,delivered:0,transported:0,constructionDeliveries:0,overflow:0};
     this.fire={heat:0,lastFuel:0,lastWood:null,fuelCount:0};
     this.add('berry',14,'crate-1');
   }
+  /** Each physical container has a hard slot capacity. Old saves may contain
+   * more than this limit; their items remain intact and render as ground
+   * overflow, but NEW deliveries can never deepen that tower. */
+  storageLimit(c){
+    if(!c)return Infinity;
+    if(c.kind==='basket')return 12;
+    if(c.kind==='crate')return 20;
+    if(c.kind==='tray')return 20;
+    if(c.kind==='pile')return c.id==='stonepile'?26:36;
+    if(c.kind==='shelves')return RECIPES.warehouse.capacity;
+    if(c.kind==='yard')return c.capacity||24;
+    if(c.kind==='tentStorage')return 16;
+    // Carry, construction sites, loose interrupted cargo and distant-island
+    // depots cannot be silently truncated by an unrelated warehouse policy.
+    return Infinity;
+  }
+  storageCount(id){return this.items.filter(i=>i.container===id).length;}
+  storageFree(c){return Math.max(0,this.storageLimit(c)-this.storageCount(c.id));}
+  /** A full storage point cannot fabricate more volume. Expand low,
+   * temporary ground pads around it. No item is deleted or spawned, and
+   * the pads have their own physical IDs for NPC pickup and accounting. */
+  overflowYard(container,type){
+    const origin=container.kind==='yard'?
+      this.containers.get(container.anchorId)||container:container;
+    const family=['berry','apple','grain','water'].includes(type)?'food':type;
+    const yards=[...this.containers.values()].filter(c=>
+      c.kind==='yard'&&c.anchorId===origin.id&&c.storageFamily===family);
+    const available=yards.find(c=>this.storageFree(c)>0);
+    if(available)return available;
+    const scopeX=origin.x>60?86:0;
+    let position=null;
+    for(let n=1;n<=100;n++){
+      const offset=stockyardOffset(n,3.3);
+      const p={x:origin.x+offset.x,z:origin.z+offset.z};
+      if(Math.hypot(p.x-scopeX,p.z)>35)continue;
+      if(this.structures.some(b=>Math.hypot(b.x-p.x,b.z-p.z)<4.5))continue;
+      if([...this.containers.values()].some(c=>
+        c.kind!=='carry'&&c.kind!=='site'&&c.kind!=='drop'&&
+        Math.hypot(c.x-p.x,c.z-p.z)<2.5))continue;
+      position=p;break;
+    }
+    // If all natural nearby spots are occupied, record the next patch in a
+    // deterministic 2D spiral. Never discard cargo or build a vertical silo.
+    if(!position){
+      const offset=stockyardOffset(yards.length+1,4.8);
+      position={x:origin.x+offset.x,z:origin.z+offset.z};
+    }
+    const id='yard-'+origin.id+'-'+family+'-'+(yards.length+1);
+    const capacity=family==='wood'?36:family==='stone'?26:family==='twig'?28:24;
+    const yard={id,kind:'yard',name:'Dočasná venkovní skládka',x:position.x,z:position.z,
+      roof:false,anchorId:origin.id,storageFamily:family,capacity};
+    this.containers.set(id,yard);
+    this.logistics.overflow=(this.logistics.overflow||0)+1;
+    return yard;
+  }
   defaultContainer(type){
-    if(type==='wood'||type==='twig')return 'woodpile';
-    if(type==='stone')return 'stonepile';
-    if(type==='seed')return 'seedtray';
-    if(type==='apple'||type==='berry'){
-      // A woven basket has finite volume: do not grow a tall fruit tower forever.
+    let id=type==='wood'||type==='twig'?'woodpile':
+      type==='stone'?'stonepile':type==='seed'?'seedtray':'crate-1';
+    if(['apple','berry','grain'].includes(type)){
       for(const basket of this.baskets.toReversed()){
-        if(this.items.filter(i=>i.container===basket.id).length<12)return basket.id;
+        if(this.storageFree(basket)>0)return basket.id;
       }
     }
-    return 'crate-1';
+    const primary=this.containers.get(id);
+    return this.storageFree(primary)>0?id:this.overflowYard(primary,type).id;
   }
   add(type,quantity=1,containerId=null) {
     if(!ITEM_INFO[type]) throw new Error('Unknown material type: '+type);
@@ -75,8 +129,11 @@ export class MaterialWorld {
     if(containerId&&!this.containers.has(containerId))throw new Error('Unknown storage container '+containerId);
     const result=[];
     for(let i=0;i<quantity;i++){
-      const container=containerId||this.defaultContainer(type);
-      if(!this.containers.has(container))throw new Error('Unknown storage container '+container);
+      let container=containerId||this.defaultContainer(type);
+      const requested=this.containers.get(container);
+      if(!requested)throw new Error('Unknown storage container '+container);
+      if(this.storageFree(requested)<=0)
+        container=this.overflowYard(requested,type).id;
       const item={id:this.nextId++,type,container,wet:0,created:true};
       this.items.push(item);result.push(item);
     }
@@ -131,7 +188,8 @@ export class MaterialWorld {
     if(this.count('twig')<5)return null;
     this.consume('twig',5);
     const id='basket-'+(this.baskets.length+1);
-    const basket={id,kind:'basket',name:'Ručně pletený košík',x:2.8+this.baskets.length*.9,z:3.1,roof:false,ownerId};
+    const offset=stockyardOffset(this.baskets.length,1.35);
+    const basket={id,kind:'basket',name:'Ručně pletený košík',x:2.8+offset.x,z:3.1+offset.z,roof:false,ownerId};
     this.baskets.push(basket);this.containers.set(id,basket);
     return basket;
   }
@@ -313,8 +371,11 @@ export class MaterialWorld {
   deliver(agent,targetId=null){
     const goods=this.cargo(agent);
     for(const item of goods){
-      const destination=targetId||this.defaultContainer(item.type);
-      if(!this.containers.has(destination))throw new Error('Missing delivery destination '+destination);
+      let destination=targetId||this.defaultContainer(item.type);
+      const store=this.containers.get(destination);
+      if(!store)throw new Error('Missing delivery destination '+destination);
+      if(this.storageFree(store)<=0)
+        destination=this.overflowYard(store,item.type).id;
       item.container=destination;
     }
     this.logistics.delivered+=goods.length;
@@ -347,10 +408,14 @@ export class MaterialWorld {
   planStockTransfer(limit=4){
     const dest=this.nearestRoofedStore();
     if(!dest)return null;
-    const originals=['woodpile','crate-1','seedtray','stonepile'];
+    const capacity=this.storageFree(dest);
+    if(capacity===0)return null;
+    const originals=['woodpile','crate-1','seedtray','stonepile',
+      ...[...this.containers.values()].filter(c=>c.kind==='yard').map(c=>c.id)];
     for(const from of originals){
       const source=this.containers.get(from);
-      const goods=this.items.filter(i=>i.container===from&&!i.reservedFor).slice(0,limit);
+      const goods=this.items.filter(i=>i.container===from&&!i.reservedFor)
+        .slice(0,Math.min(limit,capacity));
       if(goods.length)return {source,destination:dest,ids:goods.map(x=>x.id)};
     }
     return null;

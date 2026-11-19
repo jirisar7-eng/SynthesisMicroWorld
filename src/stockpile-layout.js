@@ -17,10 +17,39 @@ const square=(index,columns,spacingX,spacingZ)=>{
 const withContainer=(c,x,z,height,yaw=0,size=1,tilt=0,roll=0)=>({
   x:c.x+x,z:c.z+z,height,yaw,size,tilt,roll
 });
-const stackCenter=(pile,spacing=3)=>({
-  x:(pile%3)*spacing,
-  z:Math.floor(pile/3)*spacing
-});
+/** Square spiral for multiple independent low piles; unlike a three-column strip,
+ * the stockyard expands in every direction, never as an endless straight line.
+ * The first new pile remains to the east of the original for save compatibility. */
+const stackCenter=(pile,spacing=3)=>{
+  if(pile===0)return {x:0,z:0};
+  const ring=Math.ceil((Math.sqrt(pile+1)-1)/2);
+  const previous=(2*ring-1)**2,offset=pile-previous,side=2*ring;
+  let x,z;
+  if(offset<side){x=ring;z=1-ring+offset;}
+  else if(offset<2*side){x=ring-1-(offset-side);z=ring;}
+  else if(offset<3*side){x=-ring;z=ring-1-(offset-2*side);}
+  else{x=-ring+1+(offset-3*side);z=-ring;}
+  return {x:x*spacing,z:z*spacing};
+};
+/** Flat overflow parcels outside a full crate, basket or seed tray.
+ * Each parcel consists of at most 16 ground-level units in a small 4x4 pad.
+ * No invisible items, no limitless tower. */
+function overflowGround(c,index,type,spacing=1.75,skipOrigin=true){
+  const parcel=Math.floor(index/16),local=index%16;
+  const center=stackCenter(parcel+(skipOrigin?1:0),spacing);
+  const col=local%4,row=Math.floor(local/4);
+  const radius=type==='apple'?.162:type==='stone'?.125:
+    type==='wood'?.14:type==='twig'?.045:type==='grain'?.20:
+    type==='berry'?.116:.075;
+  return withContainer(c,
+    center.x+(col-1.5)*.35+jitter(index*5,.025),
+    center.z+(row-1.5)*.35+jitter(index*7,.025),
+    radius,hash(index*13)*TWO_PI,
+    .96+jitter(index*17,.06),jitter(index*19,.04));
+}
+
+/** Stable yard placement shared by actual material logistics and the renderer. */
+export const stockyardOffset=(index,spacing=3)=>stackCenter(index,spacing);
 
 /** Individual crossed log courses. One local pile holds up to 36 logs. */
 function logs(c,index,type){
@@ -72,12 +101,15 @@ function stones(c,index){
 }
 /** Hexagonal fruit rings remain *inside* the basket walls. */
 function basket(c,index,type){
+  // Twelve units at most in a hand-woven basket; extra units rest outside
+  // rather than exceeding its rim or forming an unbounded fruit column.
+  if(index>=12)return overflowGround(c,index-12,type,1.75);
   const layer=Math.floor(index/7),slot=index%7;
   const angle=(slot-1)*TWO_PI/6;
   const radius=slot===0?0:.285;
   return withContainer(c,Math.cos(angle)*radius,
     Math.sin(angle)*radius,
-    .38+layer*(type==='apple'?.29:.17),
+    .36+layer*.10,
     hash(index*13)*TWO_PI,.96+jitter(index*29,.08));
 }
 function loose(c,index,type){
@@ -96,7 +128,7 @@ function crate(c,index,type){
   // One support layer inside the 1.4 × 1.3 m crate, no fruit above rim.
   // Mixed fruit share indexes across types; the larger apple occupies a
   // slightly elevated pocket without intersecting the wooden floor.
-  if(index>=16)return loose(c,index-16,type);
+  if(index>=16)return overflowGround(c,index-16,type,1.9);
   const col=index%4,row=Math.floor(index/4);
   return withContainer(c,
     (col-1.5)*.305+jitter(index*5,.008),
@@ -105,10 +137,12 @@ function crate(c,index,type){
     hash(index)*TWO_PI,.96+jitter(index*19,.07));
 }
 function fieldTray(c,index){
-  const tier=Math.floor(index/20),n=index%20;
-  const col=n%5,row=Math.floor(n/5);
-  return withContainer(c,(col-2)*.18+jitter(n*3,.02),
-    (row-1.5)*.16+jitter(n*7,.02),.14+tier*.115,
+  // A real seed tray is one low compartment, not a vertical silo. Excess
+  // seed units are still accounted for but sit as small flat parcels nearby.
+  if(index>=20)return overflowGround(c,index-20,'seed',1.65);
+  const col=index%5,row=Math.floor(index/5);
+  return withContainer(c,(col-2)*.18+jitter(index*3,.02),
+    (row-1.5)*.16+jitter(index*7,.02),.14,
     hash(index*5)*TWO_PI,.9);
 }
 function warehouse(c,item,index){
@@ -128,6 +162,7 @@ function inTransit(c,item,index){
 /** One logical slot stream for mixed fruit in one crate/basket or items carried together. */
 export function stockSlotGroup(item,container){
   if(['carry','basket','crate','tentStorage','drop'].includes(container?.kind))return 'all';
+  if(container?.kind==='yard'&&container.storageFamily==='food')return 'all';
   if(container?.kind==='shelves'&&['berry','apple','grain','seed'].includes(item.type))return 'food';
   return item.type;
 }
@@ -146,6 +181,14 @@ export function layoutStockItem(item,container,index){
   if(container.kind==='tentStorage')return crate(container,n,item.type);
   if(container.kind==='drop')return loose({...container,x:container.x,z:container.z},n,item.type);
   if(container.kind==='tray')return fieldTray(container,n);
+  // Actual overflow storage patches keep goods low and spread on the ground.
+  // Items remain individually identified and counted by MaterialWorld.
+  if(container.kind==='yard'){
+    if(item.type==='wood')return logs(container,n,item.type);
+    if(item.type==='stone')return stones(container,n);
+    if(item.type==='twig')return twigs(container,n);
+    return overflowGround(container,n,item.type,1.75,false);
+  }
   if(item.type==='wood')return logs(container,n,item.type);
   if(item.type==='twig')return twigs(container,n);
   if(item.type==='stone')return stones(container,n);

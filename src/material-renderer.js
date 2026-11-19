@@ -151,6 +151,24 @@ function seedTrayMesh(container,height){
   return root;
 }
 
+/** Low, temporary outdoor stockyard. This marks a real container ID, not a
+ * fabricated warehouse or a vertically unlimited stack of resources. */
+function temporaryYardMesh(container,height){
+  const group=groundGroup(container,height,.04,.06);
+  const pad=new THREE.Mesh(box(2.55,.065,2.55),material('#837961'));
+  pad.position.y=.045;pad.receiveShadow=true;group.add(pad);
+  const trim=material('#9b8a6d');
+  for(const x of [-1.22,1.22]){
+    const board=new THREE.Mesh(box(.085,.09,2.5),trim);
+    board.position.set(x,.093,0);group.add(board);
+  }
+  for(const z of [-1.22,1.22]){
+    const board=new THREE.Mesh(box(2.5,.09,.085),trim);
+    board.position.set(0,.093,z);group.add(board);
+  }
+  return group;
+}
+
 export class MaterialRenderer {
   constructor(scene,height){
     this.scene=scene;this.height=height;this.itemMeshes=new Map();this.containers=new Map();
@@ -206,6 +224,7 @@ export class MaterialRenderer {
       else if(container.kind==='shelves')mesh=shedMesh(container,this.height);
       else if(container.kind==='pile')mesh=pileBaseMesh(container,this.height);
       else if(container.kind==='tray')mesh=seedTrayMesh(container,this.height);
+      else if(container.kind==='yard')mesh=temporaryYardMesh(container,this.height);
       if(mesh){this.group.add(mesh);this.containers.set(id,mesh);}
     }
     const existing=new Set(economy.items.map(i=>i.id));
@@ -231,7 +250,7 @@ export class MaterialRenderer {
       const carried=!!attachment;
       const pos=carried?handPose(item,ordinal):economy.itemLayout(item,ordinal);
       if(!carried && (
-        container?.kind==='drop'||
+        container?.kind==='drop'||container?.kind==='yard'||
         (container?.kind==='crate'&&ordinal>=16)||
         (container?.kind==='site'&&item.type!=='wood')
       ))groundContacts.push({pos,type:item.type});

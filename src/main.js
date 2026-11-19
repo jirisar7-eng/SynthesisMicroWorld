@@ -614,18 +614,29 @@ async function refreshServerWorld(){
   const state=hydrateWorldMirror(sim,snapshot);
   if(oldSeconds>=0&&state.seconds<oldSeconds)throw new Error('World clock went backwards');
   remoteWorldMode=true;remoteWorldError=null;
-  if(el('save-status'))el('save-status').textContent='Živý svět na VPS · den '+state.day;
+  if(el('save-status'))el('save-status').textContent='Automatické ukládání na VPS · den '+state.day;
   return state;
 }
 try{
   await refreshServerWorld();
-  initialSaveStatus='Živý svět na VPS · den '+sim.day;
+  initialSaveStatus='Automatické ukládání na VPS · den '+sim.day;
 }catch(error){
   // Public/browser-only builds intentionally have no /api/world endpoint.
   // Private preview has it; if it becomes unreachable later the viewer freezes.
   console.info('No live VPS world endpoint; using isolated local simulation',error.message);
 }
+if(window.matchMedia('(max-width:720px)').matches){
+  // Preserve the 3D map as the main screen. Inspectors open only on request.
+  el('map-agent-peek')?.removeAttribute('open');
+  el('visitor-panel')?.removeAttribute('open');
+}
 if(remoteWorldMode){
+  document.body.classList.add('remote-world');
+  const notice=el('notice');
+  if(notice){notice.classList.add('quiet');notice.setAttribute('aria-hidden','true');}
+  const godTitle=document.querySelector('.god-flyout summary');
+  if(godTitle)godTitle.textContent='✦ Boží zásahy · jen náhled';
+  if(el('visitor-summary-mode'))el('visitor-summary-mode').textContent='Pouze pozorování';
   for(const id of ['btn-save-world','btn-pause','btn-speed','btn-new-world',
     'visitor-mode','btn-live-weather','nature','cooperation'])
     if(el(id))el(id).disabled=true;
@@ -670,7 +681,16 @@ for(const link of document.querySelectorAll('[data-page]')){
 window.addEventListener('popstate',()=>showPage(pageFromLocation()));
 if(location.pathname==='/')history.replaceState({page:'map'},'','/svet/');
 showPage(pageFromLocation());
-function announce(message){const n=el('notice');n.textContent=message;n.classList.remove('quiet');clearTimeout(announce.timeout);announce.timeout=setTimeout(()=>n.classList.add('quiet'),6500);}
+function announce(message){
+  const n=el('notice');
+  n.textContent=message;
+  n.classList.remove('quiet');
+  n.removeAttribute('aria-hidden');
+  clearTimeout(announce.timeout);
+  announce.timeout=setTimeout(()=>{
+    n.classList.add('quiet');n.setAttribute('aria-hidden','true');
+  },6500);
+}
 const list=el('event-list');
 function events(){
   list.replaceChildren();
@@ -864,8 +884,11 @@ function renderUI(){
     if(el('map-crossings'))el('map-crossings').textContent=sim.islands.crossings;
     if(el('map-vessels'))el('map-vessels').textContent=sim.islands.vessels.length;
     if(el('visitor-status'))el('visitor-status').textContent=
-      PLAYER_LABELS[sim.avatar.mode]+' · dary '+(sim.avatar.gifts||0)+
-      ' · šipky / WASD / dotyk';
+      (remoteWorldMode?'Pouze pozorování · data ze serveru':
+       PLAYER_LABELS[sim.avatar.mode]+' · dary '+(sim.avatar.gifts||0)+
+       ' · šipky / WASD / dotyk');
+    if(!remoteWorldMode&&el('visitor-summary-mode'))
+      el('visitor-summary-mode').textContent=PLAYER_LABELS[sim.avatar.mode];
   }
   if(document.body.classList.contains('page-overview'))renderMaterialLedger();
   renderLifePage();
@@ -906,8 +929,8 @@ function renderUI(){
   el('world-weather').textContent=conditions;
   const remaining=Math.max(0,12-(sim.seconds-sim.lastMiracle));
   for(const button of document.querySelectorAll('[data-god]')){
-    button.disabled=remaining>.01;
-    button.title=remaining>0?'Další zásah za '+Math.ceil(remaining)+' herních sekund':'Změnit podmínky světa';
+    button.disabled=remoteWorldMode||remaining>.01;
+    button.title=remoteWorldMode?'Serverový svět je pouze pro čtení':remaining>0?'Další zásah za '+Math.ceil(remaining)+' herních sekund':'Změnit podmínky světa';
   }
   const knowledge=knowledgeSummary(a);
   el('map-knowledge-count').textContent=
@@ -1103,10 +1126,12 @@ try{
     world.focusIsland(viewingFar);
     el('btn-far-island').textContent=viewingFar?'První ostrov':'Druhý ostrov';
   });
-  el('btn-reset-camera').addEventListener('click',()=>{
+  const resetIslandView=()=>{
     viewingFar=false;world.resetCamera();
     if(el('btn-far-island'))el('btn-far-island').textContent='Druhý ostrov';
-  });
+  };
+  for(const id of ['btn-reset-camera','btn-reset-camera-menu'])
+    el(id)?.addEventListener('click',resetIslandView);
   const clock=new THREE.Clock();let uiTime=0;
   function frame(){
     try{
