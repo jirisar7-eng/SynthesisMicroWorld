@@ -5,8 +5,6 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
 import {MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO} from '../src/material-world.js';
 import {initializeBiography,lifeEvent,experienceSkill,makeLifeCard} from '../src/biography.js';
 import {Footpaths} from '../src/footpaths.js';
@@ -26,26 +24,8 @@ import {
 } from '../src/cognition.js';
 import {initializeLife,updateLife,remember,socialBond,needsDecision,relationshipLabel} from '../src/life.js';
 
-const source=fs.readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
-const start=source.indexOf('const el =');
-const end=source.indexOf('class Diorama {');
-if(start<0||end<start)throw new Error('Simulation class not found in entry');
-const classCode=source.slice(start,end)+'\nglobalThis.TestCivilization = Civilization;\n';
-const context=vm.createContext({
-  console,Math,MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO,
-  initializeBiography,lifeEvent,experienceSkill,makeLifeCard,
-  Footpaths,decideCommunityProject,SocialDynamics,loadSpeed,
-  createSprings,springRefill,drinkFromSpring,waterAvailability,calendarAt,ageResidents,
-  populationDay,livingSummary,isDependent,isLiving,
-  initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS,
-  createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS,
-  solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,
-  initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
-  learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode,
-  initializeLife,updateLife,remember,socialBond,needsDecision,relationshipLabel
-});
-new vm.Script(classCode,{filename:'main-simulation-core.js'}).runInContext(context);
-const Civilization=context.TestCivilization;
+// Shared source of truth for both browser rendering and headless simulation.
+import {Civilization} from '../src/simulation-core.js';
 
 test('MW-INTEGRATION-001: six autonomous citizens run for several days with physical inventory and real trails',()=>{
   const sim=new Civilization();
