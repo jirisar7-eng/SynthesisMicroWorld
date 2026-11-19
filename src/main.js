@@ -78,7 +78,10 @@ class Civilization {
     a.mode='walk';a.purpose=purpose;a.target={x:target.x,z:target.z};a.reason=reason;a.resource=resource;
   }
   work(a,purpose,duration,reason){
-    a.mode='work';a.purpose=purpose;a.workRemaining=duration;a.workTotal=duration;a.reason=reason;
+    a.mode='work';a.purpose=purpose;
+    const skilled=['harvest','forage','building'].includes(purpose);
+    a.workRemaining=duration*(skilled?1.12-a.personality.persistence/500:1);
+    a.workTotal=a.workRemaining;a.reason=reason;
   }
   idle(a){a.mode='idle';a.purpose='';a.target=null;a.resource=null;a.choiceAt=this.seconds+rand(0.25,1.25);}
   closestAvailable(list,a){return list.filter(p=>p.stock>0).sort((p,q)=>dist(a,p)-dist(a,q))[0];}
@@ -100,6 +103,12 @@ class Civilization {
     }
     if(this.construction && this.construction.agentId===a.id){
       this.go(a,'build',this.construction,'Chce dokončit rozestavěný přístřešek.');return;
+    }
+    // Different personalities generate different priorities even under the same weather.
+    if(this.shelters.length && this.wood>=12 && this.food>=12 && a.personality.curiosity>75 &&
+      Math.random()<(a.personality.curiosity-60)/60){
+      this.go(a,'explore',{x:rand(-29,29),z:rand(-29,29)},
+        'Má zvídavou povahu a chce prozkoumat okolní krajinu.');return;
     }
     const urgentFood=this.food<9+this.cooperation/20;
     const foragers=this.agents.filter(p=>p.id!==a.id && (p.purpose==='berries'||p.purpose==='returnfood')).length;
@@ -220,7 +229,9 @@ class Civilization {
         a.energy=clamp(a.energy-dt*.16,0,100);
       }
       else if(a.mode==='work'){
-        a.workRemaining-=dt;a.energy=clamp(a.energy-dt*.55,0,100);
+        const wetWork=this.weather.kind==='rain' && ['harvest','forage','building'].includes(a.purpose);
+        a.workRemaining-=dt*(wetWork?.78:1);
+        a.energy=clamp(a.energy-dt*.55,0,100);
         if(a.purpose==='building' && this.construction)this.construction.progress=clamp(1-a.workRemaining/a.workTotal,0,1);
         if(a.workRemaining<=0)this.completed(a);
       }
