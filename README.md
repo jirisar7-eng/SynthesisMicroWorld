@@ -14,6 +14,17 @@ This is the first interactive playable preview, not the finished 1.0 game.
 - Camera orbit / zoom / pan, pause, 1×/2×/4× speed, and indirect cooperation/nature policy sliders.
 - Mobile-responsive interface; no direct construction commands.
 
+## Pages in MW-002
+
+- **`/svet/` — full-screen 3D world:** separate immersive view with camera controls, compact population/food/wood HUD and the currently observed NPC.
+- **`/prehled/` — autonomous simulation overview:** building progress, event log, resource totals, NPC reasoning and indirect influence settings.
+- Both addresses are backed by the same client-side simulation. Switching between pages through the navigation **does not reset the running world**. Reloading currently starts a new experiment; saving is planned for a later milestone.
+- Vercel rewrites support opening either route directly and browser back/forward navigation.
+
+The environment features multiple conifer and broadleaf tree shapes, saplings, meadow flower patches, dense grass, forest shrubs, mushrooms, fallen wood, varied stones, reeds and cattails on the coast, and animated butterflies. Large ground-cover populations are drawn with GPU instancing to minimize draw calls.
+
+**Acceptance still required:** verify the full-screen layout and touch controls on Android, inspect frame rate, ensure both direct URLs load, and confirm the world continues after switching views. Successful builds alone do not establish visual or functional acceptance.
+
 ## Development
 
 ```bash
