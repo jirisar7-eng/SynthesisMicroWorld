@@ -11,7 +11,7 @@ import {FootpathRenderer} from './footpath-renderer.js';
 import {decideCommunityProject} from './settlement-planner.js';
 import {SocialDynamics} from './social-dynamics.js';
 import {createGroundTexture} from './ground-details.js';
-import {createForestPatches,createTrampledCamp,createGroundClutter} from './terrain-details.js';
+import {createForestPatches,createTrampledCamp,createGroundClutter,createTreeContactShadows} from './terrain-details.js';
 import {loadSpeed} from './carry-poses.js';
 import {initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS} from './construction-stages.js';
 import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS} from './avatar-modes.js';
@@ -52,7 +52,9 @@ class Diorama {
     this.clockAge=REMOTE_SNAPSHOT_INTERVAL_SECONDS;
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,this.mobileGraphics?1.25:1.6));
-    this.renderer.shadowMap.enabled=true;
+    // Android benefits more from stable frames than from a second full
+    // shadow-render pass over hundreds of separate trees and village meshes.
+    this.renderer.shadowMap.enabled=!this.mobileGraphics;
     this.renderer.shadowMap.type=this.mobileGraphics?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -67,7 +69,7 @@ class Diorama {
     this.nightSky=new THREE.Color('#516a7d');
     this.rainSky=new THREE.Color('#91aab4');
     const sun=new THREE.DirectionalLight('#fff2de',2.4);
-    sun.position.set(-20,43,24);sun.castShadow=true;
+    sun.position.set(-20,43,24);sun.castShadow=!this.mobileGraphics;
     const shadowResolution=this.mobileGraphics?1024:2048;
     sun.shadow.mapSize.set(shadowResolution,shadowResolution);
     sun.shadow.camera.left=-49;sun.shadow.camera.right=49;
@@ -116,6 +118,8 @@ class Diorama {
     this.boulderModels=[];this.fallenLogModels=[];
     this.addForest();this.addBerries();this.addSprings();
     createForestPatches(this.scene,terrainHeight,this.sim.trees);
+    if(this.mobileGraphics)
+      createTreeContactShadows(this.scene,terrainHeight,this.sim.trees);
     createTrampledCamp(this.scene,terrainHeight);
     createGroundClutter(this.scene,terrainHeight,this.sim.trees);
     this.addRocksAndGrass();this.addDeposits();this.addRain();
@@ -130,6 +134,20 @@ class Diorama {
     for(const agent of sim.agents){const group=this.makePerson(agent);this.scene.add(group);this.people.push(group);}
     this.inventoryVisuals.bindCarriers(this.people);
     this.inventoryVisuals.sync(sim.material);
+    // Debug-only read access for smoke tests and field performance checks.
+    // No credentials, save payloads or mutations are exposed.
+    Object.defineProperty(window,'__MW_VISUAL_STATS__',{
+      configurable:false,
+      get:()=>Object.freeze({
+        pixelRatio:this.renderer.getPixelRatio(),
+        fogNear:this.scene.fog.near,
+        fogFar:this.scene.fog.far,
+        visibleItemMeshes:this.inventoryVisuals.itemMeshes.size,
+        inventoryItemCount:this.sim.material.items.length,
+        drawCalls:this.renderer.info.render.calls,
+        shadowMaps:this.renderer.shadowMap.enabled
+      })
+    });
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
     this.visitor=this.makeVisitor();
     this.inventoryVisuals.carriers.set('visitor',this.visitor.group);
