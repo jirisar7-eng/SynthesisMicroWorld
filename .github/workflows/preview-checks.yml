@@ -11,6 +11,7 @@ on:
       - feature/mw-007-real-space
       - feature/mw-008-construction-avatar
       - feature/mw-009-living-generations
+      - feature/mw-009b-family-lifecycle
   pull_request:
     branches:
       - feature/mw-001-first-life
