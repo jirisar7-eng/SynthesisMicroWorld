@@ -5,6 +5,8 @@ import {initializeIslands,islandOf,forbidsWalkingAcrossSea,discoverFarShore,
   coastalArrival,coastalComplete,advanceVoyage,advancePredators,considerCoast} from '../src/island-life.js';
 import {evaluateProfession,updateProfessions,mentorAtMeeting} from '../src/professions.js';
 import {serializeWorld,restoreWorld} from '../src/world-save.js';
+import {observeNearby} from '../src/cognition.js';
+import {drinkFromSpring} from '../src/water-cycle.js';
 
 test('second island is part of the simulation, not just an invented number in a UI',()=>{
   const sim=new Civilization();
@@ -146,4 +148,14 @@ test('the far-side food cache cannot magically feed the mainland',()=>{
   assert.notEqual(source?.container.id,'far-cache');
   assert.ok(sim.material.consumeFoodFrom('far-cache'),'A local agent can consume local stock');
   assert.equal(sim.material.foodCount(),initial);
+});
+
+test('founders can visibly spot drinking water, but must physically approach to drink',()=>{
+  const sim=new Civilization(),a=sim.agents[0];
+  a.x=0;a.z=0;a.thirst=75;
+  const source=sim.springs.find(s=>s.id==='spring-1');
+  assert.ok(Math.hypot(source.x-a.x,source.z-a.z)>7.5);
+  observeNearby(a,{springs:sim.springs},sim.seconds,7.5);
+  assert.ok(a.cognition.resources['spring:spring-1']);
+  assert.equal(drinkFromSpring(source,a),false);
 });
