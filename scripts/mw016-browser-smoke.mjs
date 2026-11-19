@@ -5,7 +5,7 @@ import {spawn} from 'node:child_process';
 import assert from 'node:assert/strict';
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const url=process.env.MW_SMOKE_URL||'http://127.0.0.1:18585/svet/';
+const url=process.env.MW_SMOKE_URL||'http://127.0.0.1:18585/svet/?perf=1';
 const chrome=spawn(process.env.CHROME_BIN||'google-chrome',[
   '--headless=new','--no-sandbox','--disable-dev-shm-usage',
   '--enable-unsafe-swiftshader','--use-angle=swiftshader',
@@ -111,6 +111,10 @@ async function main(){
   assert.ok(renderStats.visibleItemMeshes<=520,
     '3D must have a stable item budget even when the saved world has huge supplies');
   console.log('MW016_VISUAL_QUALITY_PASS',JSON.stringify(renderStats));
+  await until('actual on-screen Android FPS meter',()=>evaluate(`
+    document.querySelector('#mw-render-fps')?.textContent?.includes(' FPS')`),65);
+  console.log('MW016_FPS_METER_PASS:',await evaluate(`
+    document.querySelector('#mw-render-fps').textContent`));
 
   await touch('.mobile-site-nav [data-page=people]');
   await until('people cards',()=>evaluate(`document.body.classList.contains('page-people') &&
