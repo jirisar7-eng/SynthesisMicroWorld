@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Civilization,terrainHeight} from '../src/simulation-core.js';
 import {initializeIslands,islandOf,forbidsWalkingAcrossSea,discoverFarShore,
-  coastalArrival,coastalComplete,advanceVoyage,advancePredators} from '../src/island-life.js';
+  coastalArrival,coastalComplete,advanceVoyage,advancePredators,considerCoast} from '../src/island-life.js';
 import {evaluateProfession,updateProfessions,mentorAtMeeting} from '../src/professions.js';
 import {serializeWorld,restoreWorld} from '../src/world-save.js';
 
@@ -121,4 +121,29 @@ test('deterministic world with island life evolves equally under matching steps'
   assert.deepEqual(a.islands,b.islands);
   assert.deepEqual(a.agents.map(p=>[p.x,p.z,p.health,p.mode]),
     b.agents.map(p=>[p.x,p.z,p.health,p.mode]));
+});
+
+test('curious founder autonomously chooses a walk to the coastline without knowing the island',()=>{
+  const sim=new Civilization(),a=sim.agents[5]; // independently curious personality
+  assert.ok(a.personality.curiosity>=80);
+  sim.day=3;sim.seconds=155;
+  a.energy=100;a.health=100;a.hunger=0;a.thirst=0;
+  a.social.status='resident';a.choiceAt=0;
+  const previous=sim.random;sim.random=()=>0;
+  try{
+    assert.equal(considerCoast(sim,a),true);
+    assert.equal(a.purpose,'scoutCoast');
+    assert.ok(a.waypoints.length>0,'Actual traversable walking route required');
+  }finally{sim.random=previous;}
+});
+test('the far-side food cache cannot magically feed the mainland',()=>{
+  const sim=new Civilization();
+  const initial=sim.material.foodCount();
+  sim.material.add('berry',3,'far-cache');
+  assert.equal(sim.material.foodCount(),initial);
+  assert.equal(sim.material.countStored('berry'),initial+3);
+  const source=sim.material.findFoodSource();
+  assert.notEqual(source?.container.id,'far-cache');
+  assert.ok(sim.material.consumeFoodFrom('far-cache'),'A local agent can consume local stock');
+  assert.equal(sim.material.foodCount(),initial);
 });
