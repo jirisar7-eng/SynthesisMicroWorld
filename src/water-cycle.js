@@ -25,3 +25,12 @@ export function drinkFromSpring(source,agent){
 export function waterAvailability(springs){
   return springs.reduce((n,s)=>n+s.stock,0);
 }
+
+/** A caregiver draws one portable ration at the physical spring. It is added
+ * to the MaterialWorld carrier only after this operation returns true.
+ */
+export function collectSpringWater(source,carrier){
+  if(!source||source.stock<1||!Number.isFinite(carrier?.x)||!Number.isFinite(carrier?.z))return false;
+  if(Math.hypot(source.x-carrier.x,source.z-carrier.z)>2.1)return false;
+  source.stock--;return true;
+}
