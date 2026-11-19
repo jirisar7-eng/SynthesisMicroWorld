@@ -924,6 +924,19 @@ function renderLifePage(){
   }
 }
 function renderUI(){
+  if(remoteWorldMode){
+    const message=remoteWorldError?
+      'Spojení se serverem přerušeno — poslední známý stav':
+      serverMovement.checked?
+        'Serverový den '+sim.day+' · za poslední interval se pohnulo '+
+        serverMovement.moved+' / '+serverMovement.checked+' NPC'+
+        (consecutiveStillSamples>=4?' · delší dobu bez změny polohy':''):
+        'Serverový den '+sim.day+' · čekám na druhý snímek pro měření pohybu';
+    for(const id of ['remote-motion-overview','remote-motion-people']){
+      const status=el(id);
+      if(status){status.hidden=false;status.textContent=message;}
+    }
+  }
   el('people').textContent=livingSummary(sim.agents).living;el('wood').textContent=sim.wood;el('food').textContent=sim.food;
   el('m-people').textContent=livingSummary(sim.agents).living;el('m-wood').textContent=sim.wood;el('m-food').textContent=sim.food;
   el('day').textContent='Rok '+calendarAt(sim.day).year+' · Den '+sim.day;
@@ -1015,7 +1028,9 @@ function renderUI(){
       article.append(title,cause,result,date);episodes.appendChild(article);
     }
   }
-    el('god-cooldown').textContent=remaining>0?
+    el('god-cooldown').textContent=remoteWorldMode?
+    'Serverový svět je pouze pro pozorování. Zásahy a změny pravidel vyžadují zabezpečené serverové ovládání.':
+    remaining>0?
     'Další zásah za '+Math.ceil(remaining)+' herních sekund · lidé stále rozhodují sami':
     'Můžeš změnit podmínky světa. Každý zásah se zapíše do historie.';
 }
