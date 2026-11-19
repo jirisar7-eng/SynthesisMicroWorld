@@ -183,7 +183,12 @@ class Diorama {
     this.camera.position.lerp(cameraGoal,Math.min(.4,time*8+.04));
     this.camera.lookAt(avatar.x,y+1.25,avatar.z);
   }
-  resetCamera(){this.camera?.position.set(29,37,48);if(this.controls){this.controls.target.set(0,1.4,0);this.controls.update();}}
+  focusIsland(far){
+    const x=far?86:0;
+    this.camera.position.set(x+29,37,48);
+    if(this.controls){this.controls.target.set(x,1.4,0);this.controls.update();}
+  }
+  resetCamera(){this.focusIsland(false);}
   addCamp(){
     // No raised, perfectly circular beige platform: terrain decals now form
     // irregular trampled soil directly on the real ground surface.
@@ -802,6 +807,8 @@ function renderUI(){
     if(el('map-trails'))el('map-trails').textContent=sim.paths.summary().trails;
     if(el('map-hauls'))el('map-hauls').textContent=sim.material.logistics.constructionDeliveries;
     if(el('map-carrying'))el('map-carrying').textContent=sim.material.countCarried();
+    if(el('map-crossings'))el('map-crossings').textContent=sim.islands.crossings;
+    if(el('map-vessels'))el('map-vessels').textContent=sim.islands.vessels.length;
     if(el('visitor-status'))el('visitor-status').textContent=
       PLAYER_LABELS[sim.avatar.mode]+' · dary '+(sim.avatar.gifts||0)+
       ' · šipky / WASD / dotyk';
@@ -1002,7 +1009,16 @@ el('help-modal').addEventListener('click',e=>{if(e.target===el('help-modal'))el(
 document.addEventListener('keydown',e=>{if(e.key==='Escape')el('help-modal').classList.add('hidden');if(e.code==='Space' && e.target.tagName!=='BUTTON'){e.preventDefault();el('btn-pause').click();}});
 try{
   world=new Diorama(el('scene'),sim);
-  el('btn-reset-camera').addEventListener('click',()=>world.resetCamera());
+  let viewingFar=false;
+  el('btn-far-island')?.addEventListener('click',()=>{
+    viewingFar=!viewingFar;
+    world.focusIsland(viewingFar);
+    el('btn-far-island').textContent=viewingFar?'První ostrov':'Druhý ostrov';
+  });
+  el('btn-reset-camera').addEventListener('click',()=>{
+    viewingFar=false;world.resetCamera();
+    if(el('btn-far-island'))el('btn-far-island').textContent='Druhý ostrov';
+  });
   const clock=new THREE.Clock();let uiTime=0;
   function frame(){
     requestAnimationFrame(frame);
