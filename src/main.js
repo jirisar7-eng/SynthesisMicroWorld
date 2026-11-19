@@ -11,7 +11,7 @@ import {SocialDynamics} from './social-dynamics.js';
 import {createGroundTexture} from './ground-details.js';
 import {createForestPatches,createTrampledCamp,createGroundClutter} from './terrain-details.js';
 import {loadSpeed} from './carry-poses.js';
-import {solidFootprints,planWalk,advanceWalk,clearSpawn} from './spatial-world.js';
+import {solidFootprints,planWalk,advanceWalk,clearSpawn,groundDropPosition} from './spatial-world.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
   learnOutcome, exchangeKnowledge, decision, knowledgeSummary, episode
@@ -147,7 +147,8 @@ class Civilization {
   idle(a){
     // If the actor abandons a haul, actual goods land at their feet.
     // Never leave them in an invisible ghost inventory.
-    const fallen=this.material.dropCargo(a,'Přerušená činnost');
+    const dropPosition=groundDropPosition(a,solidFootprints(this));
+    const fallen=this.material.dropCargo(a,'Přerušená činnost',dropPosition);
     if(fallen){
       this.addEvent('Odložený náklad',
         a.name+' položil '+fallen.quantity+' předmětů na zem. Materiál nezmizel.','⌑');
