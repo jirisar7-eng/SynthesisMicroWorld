@@ -133,3 +133,81 @@ test('MW-STOCK-011: layout remains stable and deterministic across saved-world r
     assert.deepEqual(layoutStockItem(item,c,i),layoutStockItem(item,c,i));
   }
 });
+
+
+test('MW-STOCK-012: actual material storage has finite slots with real overflow container IDs',()=>{
+  const m=new MaterialWorld();
+  m.add('seed',102);
+  const seeds=m.items.filter(i=>i.type==='seed');
+  assert.equal(seeds.length,102);
+  assert.equal(seeds.filter(i=>i.container==='seedtray').length,20);
+  const yards=[...m.containers.values()].filter(c=>c.kind==='yard'&&c.storageFamily==='seed');
+  assert.ok(yards.length>=4);
+  assert.ok(yards.every(c=>c.roof===false && m.storageCount(c.id)<=c.capacity));
+  assert.ok(seeds.every(i=>m.containers.has(i.container)));
+  assert.equal(new Set(seeds.map(i=>i.id)).size,102);
+  assert.equal(m.count('seed'),102);
+  assert.equal(m.countAll(),14+102);
+  const positions=seeds.map(i=>m.itemLayout(i));
+  assert.ok(positions.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.z)&&p.height<.5));
+});
+
+test('MW-STOCK-013: wood, stone and fruit never overflow their primary physical storage',()=>{
+  const m=new MaterialWorld();
+  m.add('wood',160);
+  m.add('stone',140);
+  m.add('apple',84);
+  assert.equal(m.storageCount('woodpile'),36);
+  assert.equal(m.storageCount('stonepile'),26);
+  assert.equal(m.storageCount('crate-1'),20);
+  assert.equal(m.count('wood'),160);
+  assert.equal(m.count('stone'),140);
+  assert.equal(m.count('apple'),84);
+  assert.equal(m.countAll(),14+160+140+84);
+  for(const c of m.containers.values()){
+    if(Number.isFinite(m.storageLimit(c)))
+      assert.ok(m.storageCount(c.id)<=m.storageLimit(c),c.id+' cannot exceed storage capacity');
+  }
+  const woodYards=[...m.containers.values()].filter(c=>c.kind==='yard'&&c.storageFamily==='wood');
+  assert.ok(woodYards.length>=4);
+  for(const i of m.items.filter(i=>i.type==='wood')){
+    const position=m.itemLayout(i);
+    assert.ok(position.height<1.1,'stored wood cannot become a skyscraper');
+  }
+});
+
+test('MW-STOCK-014: warehouse has limited real covered capacity, never claims outdoor overflow is roofed',()=>{
+  const m=new MaterialWorld();
+  const warehouse=m.addStructure('warehouse',-7,6,0,50);
+  const roof=m.containers.get('covered-'+warehouse.id);
+  const goods=m.add('wood',107,roof.id);
+  const stored=goods.filter(i=>i.container===roof.id);
+  const overflow=goods.filter(i=>i.container!==roof.id);
+  assert.equal(stored.length,100);
+  assert.equal(overflow.length,7);
+  assert.ok(stored.every(i=>m.covered(i)));
+  assert.ok(overflow.every(i=>!m.covered(i)&&m.containers.get(i.container).kind==='yard'));
+  assert.equal(m.planStockTransfer(4),null,'full warehouse cannot accept another material haul');
+  assert.equal(m.count('wood'),107);
+});
+
+test('MW-STOCK-015: mixed fruit in one overflow yard uses distinct shared slots',()=>{
+  const m=new MaterialWorld();
+  m.add('berry',36);
+  m.add('apple',12);
+  const yard=[...m.containers.values()].find(c=>c.kind==='yard'&&c.storageFamily==='food');
+  assert.ok(yard);
+  const inYard=m.items.filter(i=>i.container===yard.id);
+  const slots=inYard.map(i=>m.itemLayout(i));
+  assert.equal(new Set(slots.map(p=>
+    `${p.x.toFixed(4)},${p.z.toFixed(4)},${p.height.toFixed(4)}`)).size,slots.length);
+});
+
+test('MW-STOCK-016: woven basket placement is a 2D yard, not an infinite horizontal strip',()=>{
+  const m=new MaterialWorld();
+  m.add('twig',75);
+  for(let i=0;i<15;i++)assert.ok(m.craftBasket(i));
+  assert.equal(m.baskets.length,15);
+  assert.ok(new Set(m.baskets.map(c=>c.x)).size>=5);
+  assert.ok(new Set(m.baskets.map(c=>c.z)).size>=5);
+});
