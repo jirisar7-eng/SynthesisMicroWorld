@@ -746,12 +746,16 @@ let selectedAgent=0;
 const sim=new Civilization();
 let world;
 // Two real navigable page routes; transitions preserve the running simulation and WebGL instance.
-function pageFromLocation(){return location.pathname.startsWith('/prehled')?'overview':'map';}
+function pageFromLocation(){
+  return location.pathname.startsWith('/lide')?'people':
+    location.pathname.startsWith('/prehled')?'overview':'map';
+}
 function showPage(page,push=false){
-  const path=page==='overview'?'/prehled/':'/svet/';
+  const path=page==='overview'?'/prehled/':page==='people'?'/lide/':'/svet/';
   if(push)history.pushState({page},'',path);
   document.body.classList.toggle('page-map',page==='map');
   document.body.classList.toggle('page-overview',page==='overview');
+  document.body.classList.toggle('page-people',page==='people');
   for(const link of document.querySelectorAll('[data-page]')){
     if(link.dataset.page===page)link.setAttribute('aria-current','page');
     else link.removeAttribute('aria-current');
@@ -828,21 +832,129 @@ function drawPersonalKnowledgeMap(knowledge, person){
   ctx.font='10px sans-serif';ctx.fillText('Jen '+person.name+'ovy znalosti',12,h-12);
 }
 
+
+const materialNames={wood:'Dřevo',twig:'Proutí',stone:'Kámen',berry:'Bobule',
+  apple:'Jablka',seed:'Semínka',grain:'Obilí'};
+function renderMaterialLedger(){
+  const warehouse=sim.material;
+  const stats=warehouse.snapshot();
+  el('ledger-items').textContent=stats.total+' předmětů';
+  el('building-number').textContent=stats.buildings;
+  el('basket-number').textContent=stats.baskets;
+  el('field-number').textContent=stats.fields.length;
+  const cells=el('material-grid');cells.replaceChildren();
+  for(const [type,count] of Object.entries(stats.byType)){
+    const item=document.createElement('div');item.className='material-cell';
+    const ico=document.createElement('span');ico.className='material-icon';
+    ico.textContent=ITEM_INFO[type]?.icon||'•';
+    const value=document.createElement('strong');value.textContent=count;
+    const name=document.createElement('span');name.textContent=materialNames[type]||type;
+    item.append(ico,value,name);cells.appendChild(item);
+  }
+  const fire=stats.fire;
+  el('fire-status').textContent=fire.lastWood?
+    'Poslední poleno: '+Math.round(fire.lastWood.wet*100)+' % vlhkost → '+fire.lastWood.heat+' % tepla'+
+    (fire.lastWood.roof?' (uchované pod střechou)':' (venkovní zásoby)'):
+    'Zatím nebylo spáleno žádné poleno';
+  const list=el('building-list');list.replaceChildren();
+  if(!sim.material.structures.length){list.textContent='Obyvatelé teprve sbírají materiál pro první stavbu.';}
+  else for(const b of sim.material.structures){
+    const chip=document.createElement('span');chip.className='building-chip';
+    chip.textContent=RECIPES[b.type]?.name||b.type;
+    list.appendChild(chip);
+  }
+  if(sim.construction){
+    const chip=document.createElement('span');chip.className='building-chip';
+    chip.textContent='Staví se: '+RECIPES[sim.construction.type]?.name+
+      ' ('+Math.round(sim.construction.progress*100)+' %)';
+    list.appendChild(chip);
+  }
+}
+
+function renderLifePage(){
+  if(!document.body.classList.contains('page-people'))return;
+  const list=el('citizen-list');
+  if(!list.dataset.ready){
+    list.dataset.ready='yes';
+    for(const person of sim.agents){
+      const button=document.createElement('button');button.type='button';
+      button.className='citizen-option';button.dataset.person=person.id;
+      const icon=document.createElement('span');icon.className='avatar';icon.textContent=person.name[0];
+      const caption=document.createElement('span');caption.className='citizen-option-label';
+      const name=document.createElement('strong');name.textContent=person.profile.fullName;
+      const role=document.createElement('small');role.textContent=person.profile.origin;
+      caption.append(name,role);button.append(icon,caption);
+      button.addEventListener('click',()=>{chooseAgent(person.id);renderLifePage();});
+      list.append(button);
+    }
+  }
+  el('people-day').textContent='Den '+sim.day;
+  for(const button of list.children){
+    button.setAttribute('aria-pressed',Number(button.dataset.person)===selectedAgent?'true':'false');
+  }
+  const a=sim.agents[selectedAgent],card=makeLifeCard(a,sim);
+  if(!card)return;
+  el('life-fullname').textContent=card.fullName;
+  el('life-age').textContent=card.age+' let';
+  el('life-origin').textContent=card.origin;
+  el('life-description').textContent=card.description;
+  el('life-settlement').textContent=card.colony;
+  el('life-home').textContent=card.home;
+  el('life-role').textContent=card.role;
+  const taskNames={wood:'Hledá dřevo',harvest:'Sbírá dřevo',berries:'Hledá bobule',
+    stone:'Těží kámen',mining:'Těží kámen',apples:'Sklízí jablka',
+    applepicking:'Sbírá jablka',weaving:'Plete košík',plant:'Vysévá pole',
+    planting:'Sází osivo',reap:'Sklízí úrodu',reaping:'Sklízí obilí',
+    build:'Staví dům',building:'Stavba',explore:'Průzkum',
+    eat:'Jde jíst',eating:'Jí',talking:'Rozhovor',rest:'Odpočinek',
+    resting:'Spí',meet:'Setkání'};
+  el('life-task').textContent=taskNames[card.action]||card.action||'Rozhoduje se';
+  el('life-mood').textContent=card.mood+' %';
+  el('life-knowledge').textContent=card.knowledge;
+  el('life-biography').textContent=card.biography;
+  const skills=el('life-skills'),relations=el('life-relations'),timeline=el('life-timeline');
+  skills.replaceChildren();relations.replaceChildren();timeline.replaceChildren();
+  for(const skill of card.skills){
+    const row=document.createElement('div');row.className='life-line';
+    const name=document.createElement('span');name.textContent=skill.name;
+    const value=document.createElement('strong');value.textContent=skill.level+' / 100';
+    row.append(name,value);skills.appendChild(row);
+  }
+  for(const rel of card.relationships.slice(0,6)){
+    const row=document.createElement('div');row.className='life-line';
+    const name=document.createElement('span');name.textContent=rel.name;
+    const score=document.createElement('strong');score.textContent=rel.trust+' / 100';
+    row.append(name,score);relations.appendChild(row);
+  }
+  for(const event of card.timeline.slice(0,15)){
+    const row=document.createElement('div');row.className='life-timeline-entry';
+    const heading=document.createElement('strong');heading.textContent='Den '+event.day+' · '+event.event;
+    const body=document.createElement('small');body.textContent=event.detail;
+    row.append(heading,body);timeline.appendChild(row);
+  }
+}
 function renderUI(){
   el('people').textContent=sim.agents.length;el('wood').textContent=sim.wood;el('food').textContent=sim.food;
   el('m-people').textContent=sim.agents.length;el('m-wood').textContent=sim.wood;el('m-food').textContent=sim.food;
   el('day').textContent='Den '+sim.day;
-  const building=!!sim.construction,done=sim.shelters.length>0;
+  if(document.body.classList.contains('page-overview'))renderMaterialLedger();
+  renderLifePage();
+  const building=!!sim.construction,done=sim.material.structures.length>0;
   el('stage-tag').textContent=done?'PRVNÍ DOMOV':building?'VÝSTAVBA':'PRŮZKUM';
-  el('stage-title').textContent=done?'Osada má první přístřešek':building?'Obyvatelé staví přístřešek':'Hledání místa k životu';
-  el('stage-description').textContent=done?'Stavbu si sami naplánovali, zajistili materiál a dokončili. Simulace běží dál.':building?'Jeden z obyvatel se rozhodl využít společné zásoby dřeva a začal stavět.':'Obyvatelé samostatně hledají suroviny. Jakmile jich bude dost, některý začne stavět.';
-  el('progress-name').textContent=done?'První autonomní stavba dokončena':building?'Postup stavby':'Materiál na první přístřešek';
-  el('progress-number').textContent=done?'HOTOVO':building?Math.round(sim.construction.progress*100)+' %':Math.min(sim.wood,12)+' / 12';
-  el('build-progress').style.width=(done?100:building?sim.construction.progress*100:Math.min(sim.wood/12,1)*100)+'%';
+  el('stage-title').textContent=building?'Staví: '+RECIPES[sim.construction.type].name:
+    done?'Osada roste vlastními silami':'Hledání místa k životu';
+  el('stage-description').textContent=building?'Obyvatelé opravdu spotřebovali materiál a právě z něj stavějí.':
+    done?'Obyvatelé sami rozšiřují osadu. Zásoby, materiály a budovy jsou fyzicky evidované.':
+    'Obyvatelé hledají dřevo, kámen, jídlo, semena a další materiály.';
+  el('progress-name').textContent=building?'Postup stavby':done?'Hotové budovy':'Materiál na první dům';
+  el('progress-number').textContent=building?Math.round(sim.construction.progress*100)+' %':
+    done?sim.material.structures.length+' objektů':Math.min(sim.wood,12)+' / 12';
+  el('build-progress').style.width=(building?sim.construction.progress*100:done?100:
+    Math.min(sim.wood/12,1)*100)+'%';
   const a=sim.agents[selectedAgent];el('npc-avatar').textContent=a.name.charAt(0);el('npc-avatar').style.background='#'+new THREE.Color(a.color).getHexString();
   el('npc-name').textContent=a.name;
   el('map-npc-name').textContent=a.name;
-  const actions={wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
+  const actions={wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',stone:'Cestuje ke kameni',mining:'Těží kámen',apples:'Cestuje pro jablka',applepicking:'Sbírá jablka',returnstone:'Nese kámen',weave:'Jde uplést košík',weaving:'Plete košík',plant:'Jde sázet',planting:'Vysévá semena',reap:'Jde sklízet',reaping:'Sklízí úrodu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
   el('npc-role').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';el('npc-reason').textContent=a.reason;
   el('agent-state').textContent='ENERGIE '+Math.round(a.energy)+' %';
   el('map-npc-action').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';
