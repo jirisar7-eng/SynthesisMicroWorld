@@ -82,3 +82,35 @@ test('MW-INTEGRATION-002: every construction completion corresponds to a funded,
   }
   assert.ok(sim.material.countAll()>=0);
 });
+
+
+test('MW-INTEGRATION-003: an unhappy adult autonomously packs, walks, pitches a tent and returns',()=>{
+  const sim=new Civilization();
+  const a=sim.agents[0];
+  sim.seconds=300;sim.day=5;
+  a.cognition.visited.push({x:20,z:2,time:260});
+  a.social.frustration=92;
+  sim.material.add('wood',3);
+  sim.syncStock();
+  sim.decide(a);
+  assert.equal(a.purpose,'departWood');
+  let sawCamp=false;
+  for(let i=0;i<600;i++){
+    sim.update(.2);
+    if(sim.material.tents.length){sawCamp=true;break;}
+  }
+  assert.ok(sawCamp,'Discontent person must physically reach the camp and pitch a tent');
+  assert.equal(a.profile.departures,1);
+  assert.equal(a.social.status,'camping');
+  assert.ok(sim.material.tents[0].x>=15);
+  assert.ok(a.profile.timeline.some(event=>event.event==='Postavil si stan'));
+  let returned=false;
+  for(let i=0;i<1300;i++){
+    sim.update(.2);
+    if(a.social.status==='resident'&&a.profile.timeline.some(event=>event.event==='Vrátil se do osady')){
+      returned=true;break;
+    }
+  }
+  assert.ok(returned,'The citizen must be able to return after some days');
+  assert.ok(sim.material.items.every(item=>sim.material.containers.has(item.container)));
+});
