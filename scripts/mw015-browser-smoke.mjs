@@ -57,6 +57,22 @@ async function evaluate(expression){
     'Browser exception: '+(r.exceptionDetails.exception?.description||r.exceptionDetails.text));
   return r.result.value;
 }
+/** Actual Android-like touch interaction, not programmatic .click(). */
+async function touch(selector,index=0){
+  const expression=`(()=>{const all=[...document.querySelectorAll(${JSON.stringify(selector)})];
+    const node=all[${index}];if(!node)throw new Error('Missing touch target');
+    node.scrollIntoView({block:'center',behavior:'instant'});
+    const r=node.getBoundingClientRect();
+    return {x:r.left+r.width/2,y:r.top+r.height/2,width:r.width,height:r.height};
+  })()`;
+  const r=await evaluate(expression);
+  assert.ok(r.width>0&&r.height>0,'Touch target must have a positive hitbox: '+selector);
+  await sleep(140);
+  await call('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:r.x,y:r.y,id:1}]});
+  await sleep(80);
+  await call('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+}
+
 async function until(description,check,tries=50){
   for(let i=0;i<tries;i++){
     const result=await check().catch(()=>false);
@@ -69,6 +85,11 @@ async function main(){
   await connection();
   await call('Page.enable');
   await call('Runtime.enable');
+  await call('Emulation.setDeviceMetricsOverride',{
+    width:390,height:844,screenWidth:390,screenHeight:844,
+    deviceScaleFactor:1,mobile:true
+  });
+  await call('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
   await call('Page.navigate',{url});
   await until('live 3D map',()=>evaluate(`!!document.querySelector('#scene canvas') &&
     !!document.body.classList.contains('remote-world')`));
@@ -80,7 +101,7 @@ async function main(){
   assert.ok(map.hasCanvas&&map.remote&&!map.error);
   console.log('MW015_MAP_PASS: server viewer has a working WebGL canvas');
 
-  await evaluate(`document.querySelector('.mobile-site-nav [data-page=people]').click()`);
+  await touch('.mobile-site-nav [data-page=people]');
   await until('people cards',()=>evaluate(`document.body.classList.contains('page-people') &&
     document.querySelectorAll('#citizen-list button').length>=30`));
   const before=await evaluate(`({
@@ -89,7 +110,7 @@ async function main(){
     route:location.pathname
   })`);
   assert.equal(before.route,'/lide/');
-  await evaluate(`document.querySelectorAll('#citizen-list button')[1].click()`);
+  await touch('#citizen-list button',1);
   await until('second NPC selection',()=>evaluate(`document.querySelectorAll(
     '#citizen-list button[aria-pressed=true]').length===1 &&
     document.querySelectorAll('#citizen-list button')[1].getAttribute('aria-pressed')==='true'`));
@@ -101,18 +122,18 @@ async function main(){
   assert.ok(!after.error,'Selecting a citizen may not crash the browser UI');
   console.log('MW015_CITIZEN_SELECTION_PASS: actual second NPC biography opened');
 
-  await evaluate(`document.querySelector('.mobile-site-nav [data-page=overview]').click()`);
+  await touch('.mobile-site-nav [data-page=overview]');
   await until('overview contents',()=>evaluate(`document.body.classList.contains('page-overview') &&
     document.querySelector('#npc-name')?.textContent?.length>0`));
   const name=await evaluate(`document.querySelector('#npc-name').textContent`);
-  await evaluate(`document.querySelector('#btn-next-npc').click()`);
+  await touch('#btn-next-npc');
   await until('next citizen in overview',()=>evaluate(
     `document.querySelector('#npc-name').textContent!==${JSON.stringify(name)}`));
   assert.equal(await evaluate(`location.pathname`),'/prehled/');
   assert.ok(!await evaluate(`!!document.querySelector('#ui-failure')`));
   console.log('MW015_OVERVIEW_BUTTON_PASS: next-NPC control updates details');
 
-  await evaluate(`document.querySelector('.mobile-site-nav [data-page=map]').click()`);
+  await touch('.mobile-site-nav [data-page=map]');
   await until('back to live scene',()=>evaluate(`document.body.classList.contains('page-map') &&
     !!document.querySelector('#scene canvas')`));
   await sleep(1200);
