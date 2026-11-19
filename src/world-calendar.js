@@ -14,7 +14,8 @@ export function ageResidents(agents,day){
   const changes=[];
   for(const person of agents){
     if(!person.profile)continue;
-    const bornYear=person.profile.birthYear??-(person.profile.age??20);
+    if(person.profile.birthYear==null)person.profile.birthYear=-(person.profile.age??20);
+    const bornYear=person.profile.birthYear;
     const age=Math.max(0,time.elapsedYears-bornYear);
     if(age>person.profile.age){
       person.profile.age=age;
