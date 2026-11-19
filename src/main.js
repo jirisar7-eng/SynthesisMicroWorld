@@ -17,6 +17,7 @@ import {fetchExternalWeather} from './external-world-api.js';
 import {createSprings,springRefill,drinkFromSpring,waterAvailability} from './water-cycle.js';
 import {calendarAt,ageResidents} from './world-calendar.js';
 import {WORLD_SAVE_KEY,serializeWorld,restoreWorld} from './world-save.js';
+import {populationDay,livingSummary,isDependent,isLiving} from './generations.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot} from './spatial-world.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
@@ -81,6 +82,7 @@ class Civilization {
     });
     this.agents=names.map((name,i)=>initializeBiography(initCognition(initializeLife({id:i,name,x:rand(-2.8,2.8),z:rand(-2.8,2.8),energy:75+rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,carryType:null,workRemaining:0,workTotal:0,choiceAt:0,speed:2+rand(0,.55),color:colors[i]},i)),i));
     this.social=new SocialDynamics();
+    for(const agent of this.agents){agent.alive=true;agent.health=100;agent.sex=agent.id%2===0?'female':'male';}
     // No citizen is born inside the campfire, a crate or another solid.
     const startingSolids=solidFootprints(this);
     for(const agent of this.agents){
@@ -895,6 +897,26 @@ class Civilization {
       this.nextMeal+=75;
       springRefill(this.springs,this.weather.kind);
       const aged=ageResidents(this.agents,endingDay);
+      for(const event of populationDay(this,endingDay)){
+        if(event.kind==='partnership')this.addEvent('Nové partnerství',
+          this.agents[event.first].name+' a '+this.agents[event.second].name+
+          ' se po vzájemném sblížení rozhodli žít společně.','♡');
+        else if(event.kind==='pregnancy')this.addEvent('Očekávání dítěte',
+          this.agents[event.id].name+' očekává potomka.','✧');
+        else if(event.kind==='birth')this.addEvent('Narození dítěte',
+          'Narodil se '+event.name+'. Rodina má vlastní historii a skutečné příbuzenské vztahy.','✧');
+        else if(event.kind==='death')this.addEvent('Úmrtí obyvatele',
+          event.name+' zemřel; jeho ID, rodokmen a minulost zůstávají v dějinách.','⌛');
+      }
+      for(const changed of aged){
+        const child=this.agents[changed.id];
+        if(child&&changed.age===18&&child.mode==='dependent'){
+          child.mode='idle';child.purpose='';child.choiceAt=this.seconds+1;
+          child.profile.occupation='Neurčeno';
+          lifeEvent(child,endingDay,'Dospělost','Může se samostatně rozhodovat o práci a vztazích.');
+          this.addEvent('Dospívání',child.name+' dosáhl dospělosti.','⌛');
+        }
+      }
       if(aged.length){
         const year=calendarAt(endingDay).year;
         this.addEvent('Nový rok světa','Začal rok '+year+
@@ -916,6 +938,11 @@ class Civilization {
     // Recomputed after changes in construction, stockpiles and autonomous camps.
     const worldSolids=indexSolids(solidFootprints(this));
     for(const a of this.agents){
+      if(!isLiving(a))continue;
+      if(isDependent(a)){
+        updateLife(a,dt*.28,this.weather.kind);
+        continue; // no mining, adult cargo, construction or romance for children
+      }
       const encounter=encounterEffect(a,this.avatar,this.seconds);
       if(encounter){
         remember(a,encounter.text);
@@ -1388,8 +1415,21 @@ class Diorama {
       b.group.children[1].rotation.y=-Math.sin(t*16)*.65;
       b.group.rotation.y=t*.3;
     }
+    // People are indexed by immutable citizen ID; births add meshes but never
+    // recycle the model of a deceased founder.
+    for(const a of this.sim.agents){
+      if(!this.people[a.id]){
+        const model=this.makePerson(a);
+        model.scale.setScalar(isDependent(a)?.62:1);
+        this.people[a.id]=model;this.scene.add(model);
+        this.inventoryVisuals.carriers.set(a.id,model);
+      }
+    }
     this.sim.agents.forEach((a,i)=>{
-      const g=this.people[i];g.position.set(a.x,terrainHeight(a.x,a.z)+.04+(a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),a.z);
+      const g=this.people[i];g.visible=isLiving(a);
+      g.scale.setScalar(isDependent(a)?.62:1);
+      if(!isLiving(a))return;
+      g.position.set(a.x,terrainHeight(a.x,a.z)+.04+(a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),a.z);
       if(a.mode==='walk' && a.target){const target=a.waypoints?.[0]||a.target;
         const dx=target.x-a.x,dz=target.z-a.z;
         if(Math.hypot(dx,dz)>.08)g.rotation.y=Math.atan2(dx,dz);}
@@ -1674,8 +1714,8 @@ function renderLifePage(){
   }
 }
 function renderUI(){
-  el('people').textContent=sim.agents.length;el('wood').textContent=sim.wood;el('food').textContent=sim.food;
-  el('m-people').textContent=sim.agents.length;el('m-wood').textContent=sim.wood;el('m-food').textContent=sim.food;
+  el('people').textContent=livingSummary(sim.agents).living;el('wood').textContent=sim.wood;el('food').textContent=sim.food;
+  el('m-people').textContent=livingSummary(sim.agents).living;el('m-wood').textContent=sim.wood;el('m-food').textContent=sim.food;
   el('day').textContent='Rok '+calendarAt(sim.day).year+' · Den '+sim.day;
   if(document.body.classList.contains('page-map')){
     if(el('map-trails'))el('map-trails').textContent=sim.paths.summary().trails;
