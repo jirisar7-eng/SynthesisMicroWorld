@@ -249,7 +249,9 @@ class Diorama {
   }
   focusIsland(far){
     const x=far?86:0;
-    this.camera.position.set(x+29,37,48);
+    // The smaller island needs a nearer camera or it looks like a tiny flat
+    // pancake surrounded by fog from the default first-island viewpoint.
+    this.camera.position.set(x+(far?19:29),far?27:37,far?34:48);
     if(this.controls){this.controls.target.set(x,1.4,0);this.controls.update();}
   }
   resetCamera(){this.focusIsland(false);}
