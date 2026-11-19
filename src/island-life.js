@@ -58,7 +58,7 @@ export function initializeIslands(world){
       {id:1,x:49,z:2,anchorX:49,anchorZ:2,hunger:62,lastAttack:-100},
       {id:2,x:55,z:-2,anchorX:55,anchorZ:-2,hunger:77,lastAttack:-100},
       {id:3,x:61,z:4,anchorX:61,anchorZ:4,hunger:48,lastAttack:-100}
-    ],fish:35
+    ],fish:35,lastFishRenewalDay:0
   };
   return world.islands;
 }
@@ -306,11 +306,17 @@ export function advancePredators(world,dt){
       world.addEvent('Útok mořského tvora',
         'Hladový tvor napadl '+prey.name+' při plavbě. Zranění '+damage+' zdraví.','≈');
       lifeEvent(prey,world.day,'Napaden v moři','Ztratil '+damage+' zdraví.');
-    }else if(beast.hunger>84&&sea.fish>0&&world.random()<dt*.006){
+    }else if(beast.hunger>84&&sea.fish>0&&world.random()<dt*.003){
       sea.fish--;beast.hunger=Math.max(0,beast.hunger-43);
     }
   }
-  // A renewable fish stock provides a food web, but it cannot grow unbounded.
-  if(world.day%8===0&&Math.floor(world.seconds)%75<dt)
-    sea.fish=Math.min(55,sea.fish+1);
+  // Reproduction is per completed day, not per rendering frame. Prey
+  // must not vanish permanently simply because creatures remain hungry.
+  const elapsedDays=Math.floor(world.seconds/75);
+  if(elapsedDays>(sea.lastFishRenewalDay??0)){
+    const days=Math.min(7,elapsedDays-(sea.lastFishRenewalDay??0));
+    for(let i=0;i<days;i++)
+      sea.fish=Math.min(75,sea.fish+Math.max(1,Math.floor(sea.fish*.09)));
+    sea.lastFishRenewalDay=elapsedDays;
+  }
 }
