@@ -5,24 +5,34 @@
 <main class="workspace"><section class="scene-wrap" aria-label="3D simulace"><div id="scene"></div><div class="scene-overlay-top"><span class="view-badge">✧ &nbsp; ŽIVÝ SVĚT</span><span class="map-weather" id="map-weather">☀ Jasno</span><span class="hint" id="hint">Jedním prstem otáčíš · dvěma přibližuješ</span></div><div class="scene-overlay-bottom"><span class="hint"><span class="hint-key">↖</span> Klepni na obyvatele a zjisti, proč jedná</span><button id="btn-far-island" class="glass-button" type="button">Druhý ostrov</button><button id="btn-reset-camera" class="glass-button">⤾ &nbsp; Obnovit pohled</button></div><div class="material-map-label"><span>◌ Pěšiny <strong id="map-trails">0</strong></span><span>▣ Dopraveno <strong id="map-hauls">0</strong></span><span>♙ Nese <strong id="map-carrying">0</strong></span><span>≈ Plavby <strong id="map-crossings">0</strong></span><span>⚒ Plavidla <strong id="map-vessels">0</strong></span></div><div class="mobile-metrics"><span>◈ <b id="m-people">6</b> obyvatel</span><span>♣ <b id="m-wood">0</b> dřevo</span><span>◉ <b id="m-food">14</b> jídlo</span></div><details class="god-flyout"><summary>✦ Boží zásahy</summary><div class="god-flyout-controls"><p>Ty měníš svět. Lidé se rozhodují sami.</p><button type="button" data-god="rain">☂ Déšť</button><button type="button" data-god="bloom">✿ Úroda</button><button type="button" data-god="drought">☀ Sucho</button>
 <button id="btn-live-weather" type="button">Živé počasí API: vypnuto</button>
 <small id="weather-api-status">Volitelné Open-Meteo — referenční Pardubice, jinak lokální simulace</small></div></details>
-<div class="visitor-panel">
-  <label for="visitor-mode">Pohyb po světě</label>
-  <select id="visitor-mode" aria-label="Podoba návštěvníka">
-    <option value="observer">Volná kamera — pozorovatel</option>
-    <option value="god">Viditelný bůh</option>
-    <option value="poor">Převlek chudého poutníka</option>
-    <option value="invisible">Neviditelná návštěva</option>
-  </select>
-  <div id="visitor-controls" class="visitor-controls" aria-label="Pohyb ve světě">
-    <button type="button" data-visitor-move="left" aria-label="Otočit doleva">↶</button>
-    <button type="button" data-visitor-move="forward" aria-label="Jít vpřed">↑</button>
-    <button type="button" data-visitor-move="back" aria-label="Jít vzad">↓</button>
-    <button type="button" data-visitor-move="right" aria-label="Otočit doprava">↷</button>
+<details class="visitor-panel" id="visitor-panel" open>
+  <summary><span>Kamera a pohyb</span><small id="visitor-summary-mode">Pozorovatel</small></summary>
+  <div class="visitor-panel-content">
+    <label for="visitor-mode">Pohyb po světě</label>
+    <select id="visitor-mode" aria-label="Podoba návštěvníka">
+      <option value="observer">Volná kamera — pozorovatel</option>
+      <option value="god">Viditelný bůh</option>
+      <option value="poor">Převlek chudého poutníka</option>
+      <option value="invisible">Neviditelná návštěva</option>
+    </select>
+    <div id="visitor-controls" class="visitor-controls" aria-label="Pohyb ve světě">
+      <button type="button" data-visitor-move="left" aria-label="Otočit doleva">↶</button>
+      <button type="button" data-visitor-move="forward" aria-label="Jít vpřed">↑</button>
+      <button type="button" data-visitor-move="back" aria-label="Jít vzad">↓</button>
+      <button type="button" data-visitor-move="right" aria-label="Otočit doprava">↷</button>
+    </div>
+    <small id="visitor-status">Vyber podobu · šipky / WASD nebo tlačítka</small>
+    <div class="mw-save-controls"><button type="button" id="btn-save-world">Uložit svět</button><small id="save-status">Lokální svět</small></div>
   </div>
-  <small id="visitor-status">Vyber podobu · šipky / WASD nebo tlačítka</small>
-<div class="mw-save-controls"><button type="button" id="btn-save-world">Uložit svět</button><small id="save-status">Lokální svět</small></div>
-</div>
-<div class="map-agent-peek" aria-live="polite"><span class="map-peek-label">SLEDOVANÝ OBYVATEL</span><strong id="map-npc-name">Adam</strong><span id="map-npc-action">Zkoumá okolí</span><span id="map-npc-reason">Rozhlíží se po novém světě.</span><span class="map-knowledge-count" id="map-knowledge-count">0 osobně poznaných zdrojů</span></div><div class="notice" id="notice" role="status">Svět se probouzí. Obyvatelé sami hledají první zdroje.</div></section>
+</details>
+<details class="map-agent-peek" id="map-agent-peek" open>
+  <summary><span class="map-peek-label">SLEDOVANÝ OBYVATEL</span><strong id="map-npc-name">Adam</strong><span class="expand-indicator" aria-hidden="true">⌄</span></summary>
+  <div class="map-agent-peek-body" aria-live="polite">
+    <span id="map-npc-action">Zkoumá okolí</span>
+    <span id="map-npc-reason">Rozhlíží se po novém světě.</span>
+    <span class="map-knowledge-count" id="map-knowledge-count">0 osobně poznaných zdrojů</span>
+  </div>
+</details><div class="notice" id="notice" role="status">Svět se probouzí. Obyvatelé sami hledají první zdroje.</div></section>
 <aside class="dashboard"><div class="dashboard-scroll"><div class="panel-heading"><div><span class="eyebrow">PŘEHLED SVĚTA</span><h1>První osada</h1></div><span class="day-badge" id="day">Den 1</span></div><div class="metrics"><div class="metric"><span class="metric-icon gold">◈</span><div><small>OBYVATELÉ</small><strong id="people">6</strong></div></div><div class="metric"><span class="metric-icon green">♣</span><div><small>DŘEVO</small><strong id="wood">0</strong></div></div><div class="metric"><span class="metric-icon amber">◉</span><div><small>POTRAVINY</small><strong id="food">14</strong></div></div></div><div class="chapter"><div class="chapter-head"><span class="eyebrow">AUTONOMNÍ VÝVOJ</span><span class="tag" id="stage-tag">PRŮZKUM</span></div><h2 id="stage-title">Hledání místa k životu</h2><p id="stage-description">Obyvatelé se rozhlížejí, sbírají suroviny a rozhodují, co jejich nová osada potřebuje.</p><div class="progress-track"><div id="build-progress" class="progress-fill"></div></div><div class="progress-label"><span id="progress-name">Materiál na první přístřešek</span><strong id="progress-number">0 / 12</strong></div></div><section class="world-ledger" aria-label="Fyzické zásoby osady">
 <div class="ledger-header"><div><span class="eyebrow">FYZICKÝ SVĚT · MW-006</span><h2>Zásoby a stavby</h2></div><span id="ledger-items" class="ledger-tag">14 předmětů</span></div>
 <div class="material-grid" id="material-grid"></div>
