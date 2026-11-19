@@ -491,13 +491,17 @@ class Civilization {
           lifeEvent(first,this.day,'Rozhovor s '+second.name,'Prohloubili svůj vztah.');
           lifeEvent(second,this.day,'Rozhovor s '+first.name,'Prohloubili svůj vztah.');
         }
-        const heardA=exchangeKnowledge(second,first,this.seconds,3);
-        const heardB=exchangeKnowledge(first,second,this.seconds,3);
-        if(heardA.length+heardB.length){
-          this.addEvent('Výměna znalostí',first.name+' a '+second.name+
-            ' si předali '+(heardA.length+heardB.length)+' informací o zdrojích.','✧');
-        }else{
-          this.addEvent('Nové přátelství',first.name+' a '+second.name+' si popovídali a posílili svůj vztah.','♡');
+        // A conflict harms trust; it must NOT simultaneously be recorded as a friendship.
+        if(!conflict){
+          const heardA=exchangeKnowledge(second,first,this.seconds,3);
+          const heardB=exchangeKnowledge(first,second,this.seconds,3);
+          if(heardA.length+heardB.length){
+            this.addEvent('Výměna znalostí',first.name+' a '+second.name+
+              ' si předali '+(heardA.length+heardB.length)+' informací o zdrojích.','✧');
+          }else{
+            this.addEvent('Přátelský rozhovor',first.name+' a '+second.name+
+              ' si povídali a vzájemně se podpořili.','♡');
+          }
         }
         this.meetings.delete(a.conversation);
       }
