@@ -1,4 +1,5 @@
 import {RECIPES} from './material-world.js';
+import {footprintOverlaps} from './spatial-world.js';
 const types=['house','warehouse','farm','hall','workshop'];
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 
@@ -53,7 +54,7 @@ export function chooseSettlementSite(type,context={}){
     });
     if(occupied)continue;
     // Do not remove standing trees or erase deposits invisibly.
-    if(obstacles.some(o=>Math.abs(o.x-x)<size[0]/2+1&&Math.abs(o.z-z)<size[1]/2+1))continue;
+    if(obstacles.some(o=>footprintOverlaps(x,z,size[0]/2,size[1]/2,o,.9)))continue;
     if(known.length&&r>9&&!known.some(p=>Math.hypot(p.x-x,p.z-z)<10))continue;
     const trail=paths?paths.trafficAt(x,z):0;
     const nearbyTrail=paths?

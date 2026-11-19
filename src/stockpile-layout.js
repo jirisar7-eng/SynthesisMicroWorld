@@ -37,7 +37,8 @@ function logs(c,index,type){
     type==='wood'?{x:-(c.buildingWidth||4)/2-1.75,z:.35}:{x:(c.buildingWidth||4)/2+1.75,z:.35}:
     c.kind==='shelves'?{x:-.52,z:-.1}:{x:0,z:0};
   // Logs start just above the actual surface; every crossed layer sits higher.
-  const base=c.kind==='shelves'?.38:.17;
+  // Top of outdoor pallet = terrain + .16; log radius = .13.
+  const base=c.kind==='shelves'?.39:c.id==='woodpile'?.29:.14;
   return withContainer(c,x+center.x+offset.x,z+center.z+offset.z,
     base+layer*.256,axis*Math.PI/2+jitter(index*19,.055),
     1+jitter(index*4+2,.047),jitter(index*17,.025));
@@ -79,16 +80,29 @@ function basket(c,index,type){
     .38+layer*(type==='apple'?.29:.17),
     hash(index*13)*TWO_PI,.96+jitter(index*29,.08));
 }
-function crate(c,index,type){
-  // 4 columns × 3 rows, then a new layer inside the crate (never a linear trail).
-  const tier=Math.floor(index/12),n=index%12;
-  const col=n%4,row=Math.floor(n/4);
-  const isSmall=type==='berry'||type==='seed';
-  const spacingX=isSmall?.225:.30,spacingZ=isSmall?.225:.31;
+function loose(c,index,type){
+  // Overflow stays on the actual terrain beside the container; it never
+  // grows into an impossible tower suspended above its wooden rim.
+  const angle=index*GOLDEN_ANGLE+.65,spread=.98+.17*Math.sqrt(index+1);
+  const radius=type==='wood'?.14:type==='twig'?.045:type==='stone'?.125:
+    type==='apple'?.162:type==='seed'?.057:type==='grain'?.20:.116;
   return withContainer(c,
-    (col-1.5)*spacingX+jitter(index*5,.012),
-    (row-1)*spacingZ+jitter(index*7,.012),
-    .34+tier*(isSmall?.185:.29),hash(index)*TWO_PI,.95+jitter(index*19,.08));
+    Math.cos(angle)*spread+jitter(index*9,.055),
+    Math.sin(angle)*spread+jitter(index*5,.055),
+    radius,hash(index*17)*TWO_PI,.96+jitter(index*13,.06),
+    jitter(index*3,.055),jitter(index*7,.04));
+}
+function crate(c,index,type){
+  // One support layer inside the 1.4 × 1.3 m crate, no fruit above rim.
+  // Mixed fruit share indexes across types; the larger apple occupies a
+  // slightly elevated pocket without intersecting the wooden floor.
+  if(index>=16)return loose(c,index-16,type);
+  const col=index%4,row=Math.floor(index/4);
+  return withContainer(c,
+    (col-1.5)*.305+jitter(index*5,.008),
+    (row-1.5)*.285+jitter(index*7,.008),
+    type==='apple'?.40:type==='grain'?.34:.35,
+    hash(index)*TWO_PI,.96+jitter(index*19,.07));
 }
 function fieldTray(c,index){
   const tier=Math.floor(index/20),n=index%20;
@@ -113,7 +127,7 @@ function inTransit(c,item,index){
 }
 /** One logical slot stream for mixed fruit in one crate/basket or items carried together. */
 export function stockSlotGroup(item,container){
-  if(['carry','basket','crate','tentStorage'].includes(container?.kind))return 'all';
+  if(['carry','basket','crate','tentStorage','drop'].includes(container?.kind))return 'all';
   if(container?.kind==='shelves'&&['berry','apple','grain','seed'].includes(item.type))return 'food';
   return item.type;
 }
@@ -130,6 +144,7 @@ export function layoutStockItem(item,container,index){
     return crate(container,n,item.type);
   }
   if(container.kind==='tentStorage')return crate(container,n,item.type);
+  if(container.kind==='drop')return loose({...container,x:container.x,z:container.z},n,item.type);
   if(container.kind==='tray')return fieldTray(container,n);
   if(item.type==='wood')return logs(container,n,item.type);
   if(item.type==='twig')return twigs(container,n);

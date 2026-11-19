@@ -18,13 +18,13 @@ export function handPose(item, index = 0) {
       return {x: -.28, y: .1 + slot * .085, z: .03,
         yaw: .45, pitch: 0, roll: 0, size: .85};
     case 'apple':
-      return {x: -.20 + (slot % 3) * .19, y: -.10 + Math.floor(slot / 3) * .16,
-        z: .10 + (slot % 2) * .13, yaw: slot * .7, pitch: 0, roll: 0, size: .85};
+      return {x: -.20 + (slot % 3) * .20, y: -.20 + Math.floor(slot / 3) * .17,
+        z: .08 + (slot % 2) * .09, yaw: slot * .7, pitch: 0, roll: 0, size: .85};
     case 'berry':
     case 'seed':
     case 'grain':
-      return {x: -.22 + (slot % 4) * .14, y: -.20 + Math.floor(slot / 4) * .13,
-        z: .12 + (slot % 2) * .13, yaw: slot * .8, pitch: 0, roll: 0, size: .98};
+      return {x: -.22 + (slot % 4) * .145, y: -.23 + Math.floor(slot / 4) * .14,
+        z: .08 + (slot % 2) * .10, yaw: slot * .8, pitch: 0, roll: 0, size: .98};
     default:
       return {x: 0, y: 0, z: .1, yaw: 0, pitch: 0, roll: 0, size: 1};
   }

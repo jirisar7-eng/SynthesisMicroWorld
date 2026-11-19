@@ -13,6 +13,7 @@ import {Footpaths} from '../src/footpaths.js';
 import {decideCommunityProject} from '../src/settlement-planner.js';
 import {SocialDynamics} from '../src/social-dynamics.js';
 import {loadSpeed} from '../src/carry-poses.js';
+import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,isBlocked} from '../src/spatial-world.js';
 import {
   initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
   learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode
@@ -28,6 +29,7 @@ const context=vm.createContext({
   console,Math,MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO,
   initializeBiography,lifeEvent,experienceSkill,makeLifeCard,
   Footpaths,decideCommunityProject,SocialDynamics,loadSpeed,
+  solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,
   initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
   learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode,
   initializeLife,updateLife,remember,socialBond,needsDecision,relationshipLabel
@@ -111,6 +113,16 @@ test('MW-INTEGRATION-003: an unhappy adult autonomously packs, walks, pitches a 
     if(a.social.status==='resident'&&a.profile.timeline.some(event=>event.event==='Vrátil se do osady')){
       returned=true;break;
     }
+  }
+  if(!returned){
+    console.error('MW007_RETURN_DEBUG',JSON.stringify({
+      now:sim.seconds,expectedReturn:a.social.expectedReturn,
+      status:a.social.status,mode:a.mode,purpose:a.purpose,
+      position:{x:a.x,z:a.z},target:a.target,
+      routeNodes:a.waypoints?.length,reason:a.reason,carried:sim.material.cargo(a).length,
+      tents:sim.material.tents.map(t=>({x:t.x,z:t.z})),
+      pathHome:planWalk(a,{x:0,z:0},solidFootprints(sim))?.length??null
+    }));
   }
   assert.ok(returned,'The citizen must be able to return after some days');
   assert.ok(sim.material.items.every(item=>sim.material.containers.has(item.container)));
