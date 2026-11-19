@@ -681,7 +681,16 @@ for(const link of document.querySelectorAll('[data-page]')){
 window.addEventListener('popstate',()=>showPage(pageFromLocation()));
 if(location.pathname==='/')history.replaceState({page:'map'},'','/svet/');
 showPage(pageFromLocation());
-function announce(message){const n=el('notice');n.textContent=message;n.classList.remove('quiet');clearTimeout(announce.timeout);announce.timeout=setTimeout(()=>n.classList.add('quiet'),6500);}
+function announce(message){
+  const n=el('notice');
+  n.textContent=message;
+  n.classList.remove('quiet');
+  n.removeAttribute('aria-hidden');
+  clearTimeout(announce.timeout);
+  announce.timeout=setTimeout(()=>{
+    n.classList.add('quiet');n.setAttribute('aria-hidden','true');
+  },6500);
+}
 const list=el('event-list');
 function events(){
   list.replaceChildren();
@@ -1117,10 +1126,12 @@ try{
     world.focusIsland(viewingFar);
     el('btn-far-island').textContent=viewingFar?'První ostrov':'Druhý ostrov';
   });
-  el('btn-reset-camera').addEventListener('click',()=>{
+  const resetIslandView=()=>{
     viewingFar=false;world.resetCamera();
     if(el('btn-far-island'))el('btn-far-island').textContent='Druhý ostrov';
-  });
+  };
+  for(const id of ['btn-reset-camera','btn-reset-camera-menu'])
+    el(id)?.addEventListener('click',resetIslandView);
   const clock=new THREE.Clock();let uiTime=0;
   function frame(){
     try{
