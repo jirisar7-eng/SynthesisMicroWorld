@@ -99,7 +99,7 @@ class Civilization {
   }
   go(a,purpose,target,reason,resource=null){
     a.mode='walk';a.purpose=purpose;a.target={x:target.x,z:target.z};a.reason=reason;a.resource=resource;
-    const sourceType=purpose==='wood'?'tree':purpose==='berries'?'berry':null;
+    const sourceType=purpose==='wood'?'tree':purpose==='berries'?'berry':purpose==='stone'?'stone':purpose==='apples'?'apple':null;
     const provenance=sourceType&&resource?a.cognition.resources[sourceType+':'+resource.id]?.origin||'unknown':'own';
     decision(a,this.seconds,purpose,reason,provenance);
   }
@@ -168,7 +168,12 @@ class Civilization {
     }
     const need=needsDecision(a,this.food);
     if(need==='eat'){
-      this.go(a,'eat',{x:rand(-2,2),z:rand(-2,2)},'Má hlad ('+Math.round(a.hunger)+' %) a jde se samostatně najíst.');return;
+      const foodSource=this.material.findFoodSource();
+      if(foodSource){
+        this.go(a,'eat',foodSource.container,
+          'Má hlad ('+Math.round(a.hunger)+' %) a jde fyzicky k zásobám, kde je jídlo.',
+          {containerId:foodSource.container.id});return;
+      }
     }
     const dark=(this.seconds%75)/75>.72 || (this.seconds%75)/75<.11;
     if(need==='rest'||(dark && a.energy<76)){
@@ -281,13 +286,19 @@ class Civilization {
     if(a.purpose==='departWood'){
       if(this.material.packDepartureWood(a)){
         a.carry=this.material.cargo(a).length;a.carryType='wood';
-        this.go(a,'departFood',this.material.containers.get('crate-1'),
-          'Jde osobně pro jídlo, které si odnese do nového tábora.');return;
+        const foodSource=this.material.departureFoodSource();
+        if(foodSource){
+          this.go(a,'departFood',foodSource,
+            'Jde osobně pro jídlo, které si odnese do nového tábora.',{
+              containerId:foodSource.id
+            });return;
+        }
+        this.material.cancelDeparture(a);a.carry=0;
       }
       a.social.status='resident';this.idle(a);return;
     }
     if(a.purpose==='departFood'){
-      if(this.material.packDepartureFood(a)){
+      if(this.material.packDepartureFood(a,a.resource?.containerId)){
         a.carry=this.material.cargo(a).length;
         a.social.status='travelling';
         this.go(a,'departCamp',a.social.site,
@@ -455,7 +466,7 @@ class Civilization {
       this.idle(a);return;
     }
     if(a.purpose==='eating'){
-      if(this.material.consumeFood()){
+      if(this.material.consumeFoodFrom(a.resource?.containerId)){
         this.syncStock();a.hunger=Math.max(0,a.hunger-76);a.mood=Math.min(100,a.mood+7);
         a.lastMeal=this.seconds;remember(a,'Najedl se ze zásob osady');
       }else{a.mood=Math.max(0,a.mood-8);remember(a,'Nenašel jídlo, když měl hlad');}
