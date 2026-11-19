@@ -4,10 +4,12 @@ on:
     branches:
       - feature/mw-004-living-world
       - feature/mw-005-knowledge
+      - feature/mw-006-material-life
   pull_request:
     branches:
       - feature/mw-001-first-life
       - feature/mw-004-living-world
+      - feature/mw-005-knowledge
       - main
 permissions:
   contents: read
