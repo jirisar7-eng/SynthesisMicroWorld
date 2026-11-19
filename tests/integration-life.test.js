@@ -5,8 +5,6 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
 import {MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO} from '../src/material-world.js';
 import {initializeBiography,lifeEvent,experienceSkill,makeLifeCard} from '../src/biography.js';
 import {Footpaths} from '../src/footpaths.js';
@@ -16,6 +14,7 @@ import {loadSpeed} from '../src/carry-poses.js';
 import {createSprings,springRefill,drinkFromSpring,waterAvailability} from '../src/water-cycle.js';
 import {calendarAt,ageResidents} from '../src/world-calendar.js';
 import {serializeWorld,restoreWorld,WORLD_SAVE_KEY} from '../src/world-save.js';
+import {populationDay,livingSummary,isDependent,isLiving} from '../src/generations.js';
 import {initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS} from '../src/construction-stages.js';
 import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS} from '../src/avatar-modes.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,isBlocked} from '../src/spatial-world.js';
@@ -25,25 +24,8 @@ import {
 } from '../src/cognition.js';
 import {initializeLife,updateLife,remember,socialBond,needsDecision,relationshipLabel} from '../src/life.js';
 
-const source=fs.readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
-const start=source.indexOf('const el =');
-const end=source.indexOf('class Diorama {');
-if(start<0||end<start)throw new Error('Simulation class not found in entry');
-const classCode=source.slice(start,end)+'\nglobalThis.TestCivilization = Civilization;\n';
-const context=vm.createContext({
-  console,Math,MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO,
-  initializeBiography,lifeEvent,experienceSkill,makeLifeCard,
-  Footpaths,decideCommunityProject,SocialDynamics,loadSpeed,
-  createSprings,springRefill,drinkFromSpring,waterAvailability,calendarAt,ageResidents,
-  initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS,
-  createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS,
-  solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,
-  initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
-  learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode,
-  initializeLife,updateLife,remember,socialBond,needsDecision,relationshipLabel
-});
-new vm.Script(classCode,{filename:'main-simulation-core.js'}).runInContext(context);
-const Civilization=context.TestCivilization;
+// Shared source of truth for both browser rendering and headless simulation.
+import {Civilization} from '../src/simulation-core.js';
 
 test('MW-INTEGRATION-001: six autonomous citizens run for several days with physical inventory and real trails',()=>{
   const sim=new Civilization();
@@ -219,4 +201,34 @@ test('MW009-SAVE-INTEGRATION-002: refuses corrupt save and leaves current world 
   assert.throws(()=>restoreWorld(sim,'{"version":0,"state":{}}'),/Unsupported/);
   assert.throws(()=>restoreWorld(sim,'invalid'),/Unexpected|JSON|position|token/i);
   assert.equal(sim.agents[0].profile.age,age);
+});
+
+test('MW009B-LIFE-001: dependent children never mine/build or appear as autonomous adults',()=>{
+  const sim=new Civilization(),[a,b]=sim.agents;
+  a.relationships[b.id]=95;b.relationships[a.id]=95;
+  a.x=1;a.z=1;b.x=1.5;b.z=1;
+  for(let day=7;day<=420;day++){
+    if(day===7){
+      const events=populationDay(sim,day);
+      assert.ok(events.some(e=>e.kind==='partnership'));
+    }
+    if(day===45){
+      sim.material.add('wood',30);
+      sim.material.add('stone',20);
+      sim.material.addStructure('house',5,8,a.id,1);
+    }
+    if(day%30===0||day>=315)populationDay(sim,day);
+  }
+  const children=sim.agents.filter(person=>person.profile.bornDay>1);
+  assert.ok(children.length>=1,'Life cycle can autonomously create genuine children given support');
+  for(const child of children){
+    assert.equal(child.profile.age,0);
+    assert.equal(child.mode,'dependent');
+    assert.equal(child.purpose,'childhood');
+    assert.ok(child.profile.genealogy.parentIds.length===2);
+    assert.ok(sim.agents[child.profile.genealogy.parentIds[0]].profile.genealogy.childIds.includes(child.id));
+  }
+  for(let i=0;i<100;i++)sim.update(.15);
+  for(const child of children)assert.ok(child.purpose!=='building'&&child.purpose!=='harvest');
+  assert.ok(livingSummary(sim.agents).children>=1);
 });

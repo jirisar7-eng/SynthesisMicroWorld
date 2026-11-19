@@ -76,7 +76,7 @@ export function makeLifeCard(agent,sim){
     description:p.description,biography:biography(agent,sim),
     livingState:agent.mode,action:agent.purpose,reason:agent.reason,
     colony:p.settlement,home:home?home.id:(p.home||'Žádné trvalé bydlení'),
-    role:p.occupation,health:'Zdravotní systém zatím není simulován',
+    role:p.occupation,health:Math.round(agent.health??100),
     hunger:Math.round(agent.hunger),thirst:Math.round(agent.thirst||0),energy:Math.round(agent.energy),
     loneliness:Math.round(agent.socialNeed),mood:Math.round(agent.mood),
     personality:{...agent.personality},skills,relationships:relationList,

@@ -109,5 +109,5 @@ test('MW-LIFE-001: biography is based on recorded actions, not fabricated histor
  assert.match(card.biography,/dokončil dům/);
  assert.equal(card.timeline[0].day,2);
  assert.equal(card.skills.find(x=>x.name==='Práce se dřevem').level,12);
- assert.match(card.health,/zatím není simulován/);
+ assert.equal(card.health,100); // basic simulated health, not complete medical system
 });
