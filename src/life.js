@@ -33,7 +33,8 @@ export function remember(agent, memory) {
 }
 
 export function updateLife(agent, dt, weather = 'clear') {
-  agent.hunger = clampLife(agent.hunger + dt * 0.36, 0, 100);
+  const effort = ['harvest', 'forage', 'building', 'wood', 'berries'].includes(agent.purpose) ? 1.22 : 1;
+  agent.hunger = clampLife(agent.hunger + dt * 0.36 * effort, 0, 100);
   agent.socialNeed = clampLife(agent.socialNeed + dt * 0.27, 0, 100);
   const suffering = agent.hunger > 85 || agent.energy < 15;
   const rainStress = weather === 'rain' && agent.purpose !== 'resting' && agent.purpose !== 'eating';
@@ -62,6 +63,8 @@ export function socialBond(a, b) {
 export function needsDecision(agent, sharedFood) {
   if (agent.hunger >= 70 && sharedFood > 0) return 'eat';
   if (agent.energy < 24) return 'rest';
-  if (agent.socialNeed >= 67) return 'social';
+  // Sociable personalities seek company sooner; independent people tolerate solitude longer.
+  const socialThreshold = 85 - (agent.personality?.sociability ?? 50) * 0.27;
+  if (agent.socialNeed >= socialThreshold || (agent.mood < 27 && agent.socialNeed >= 44)) return 'social';
   return 'work';
 }
