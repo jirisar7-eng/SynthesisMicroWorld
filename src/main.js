@@ -1297,6 +1297,7 @@ function renderUI(){
   if(document.body.classList.contains('page-map')){
     if(el('map-trails'))el('map-trails').textContent=sim.paths.summary().trails;
     if(el('map-hauls'))el('map-hauls').textContent=sim.material.logistics.constructionDeliveries;
+    if(el('map-carrying'))el('map-carrying').textContent=sim.material.countCarried();
   }
   if(document.body.classList.contains('page-overview'))renderMaterialLedger();
   renderLifePage();
