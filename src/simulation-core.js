@@ -50,7 +50,7 @@ class Civilization {
     this.seedState=(Math.imul(this.seedState,1664525)+1013904223)>>>0;
     return this.seedState/4294967296;
   }
-  this.rand(min,max){return min+this.random()*(max-min);}
+  rand(min,max){return min+this.random()*(max-min);}
   constructor(){
     this.seedState=217;
     this.seconds=0;this.day=1;this.material=new MaterialWorld();
