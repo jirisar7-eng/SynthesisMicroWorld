@@ -21,7 +21,7 @@ services:
     mem_limit: 192m
     cpus: 0.75
     networks:
-      - microworld_private
+      microworld_private: {}
     logging:
       driver: json-file
       options:
