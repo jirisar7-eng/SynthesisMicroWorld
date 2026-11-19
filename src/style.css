@@ -351,3 +351,29 @@ body.remote-world .god-flyout summary{font-size:11px}
 @media(max-width:720px){
   .remote-motion-status{font-size:9px;max-width:230px}
 }
+
+
+/* MW-017 — refine ONLY existing map overlays.
+   A solid translucent tint is cheaper than blurring large live WebGL regions
+   on low-power phones; all original buttons and inspectors remain available. */
+@media (max-width:720px){
+  .page-map .visitor-panel,
+  .page-map .god-flyout,
+  .page-map .map-agent-peek{
+    -webkit-backdrop-filter:none;
+    backdrop-filter:none;
+    background:rgba(17,39,32,.94);
+  }
+  .page-map .visitor-panel[open]{
+    max-height:min(48dvh,375px);
+  }
+  .page-map .map-agent-peek[open]{
+    max-height:min(42dvh,285px);
+  }
+  .page-map .material-map-label{
+    -webkit-backdrop-filter:none;
+    backdrop-filter:none;
+    background:rgba(22,46,36,.91);
+  }
+}
+#mw-render-fps[hidden]{display:none!important}
