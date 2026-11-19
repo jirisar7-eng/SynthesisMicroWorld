@@ -52,3 +52,17 @@ test('memory is bounded and latest experiences stay available', () => {
   assert.equal(a.memories.length,5);
   assert.equal(a.memories.at(-1),'Zkušenost 14');
 });
+
+test('sociable individuals initiate contact sooner than independent ones', () => {
+  const reserved=person(0,'Adam');const sociable=person(1,'Ema');
+  reserved.socialNeed=65;sociable.socialNeed=65;
+  assert.equal(needsDecision(reserved,10),'work');
+  assert.equal(needsDecision(sociable,10),'social');
+});
+
+test('physical activity consumes more energy from food needs than idling', () => {
+  const worker=person(2),observer=person(2);
+  worker.purpose='harvest';observer.purpose='resting';
+  updateLife(worker,30,'clear');updateLife(observer,30,'clear');
+  assert.ok(worker.hunger>observer.hunger);
+});
