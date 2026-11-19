@@ -11,7 +11,7 @@ import {SocialDynamics} from './social-dynamics.js';
 import {createGroundTexture} from './ground-details.js';
 import {createForestPatches,createTrampledCamp,createGroundClutter} from './terrain-details.js';
 import {loadSpeed} from './carry-poses.js';
-import {solidFootprints,planWalk,advanceWalk,clearSpawn,groundDropPosition} from './spatial-world.js';
+import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition} from './spatial-world.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
   learnOutcome, exchangeKnowledge, decision, knowledgeSummary, episode
@@ -712,7 +712,7 @@ class Civilization {
     }
     // The same geometry that blocks a mesh also blocks citizens on every step.
     // Recomputed after changes in construction, stockpiles and autonomous camps.
-    const worldSolids=solidFootprints(this);
+    const worldSolids=indexSolids(solidFootprints(this));
     for(const a of this.agents){
       const discoveries=observeNearby(a,{trees:this.trees,berries:this.berries,stones:this.stones,apples:this.apples},this.seconds,7.5);
       if(discoveries.length && this.seconds-this.lastDiscoveryReport>=12){
