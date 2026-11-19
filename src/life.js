@@ -15,6 +15,7 @@ export function initializeLife(agent, index) {
   const traits = PERSONALITIES[index % PERSONALITIES.length];
   agent.personality = { ...traits };
   agent.hunger = 22 + (index * 7) % 28;
+  agent.thirst = 24 + (index * 9) % 19;
   agent.socialNeed = 48 + (index * 11) % 29;
   agent.mood = 61 + (index * 3) % 17;
   agent.memories = ['Příchod do nového světa'];
@@ -35,8 +36,9 @@ export function remember(agent, memory) {
 export function updateLife(agent, dt, weather = 'clear') {
   const effort = ['harvest', 'forage', 'building', 'wood', 'berries'].includes(agent.purpose) ? 1.22 : 1;
   agent.hunger = clampLife(agent.hunger + dt * 0.36 * effort, 0, 100);
+  agent.thirst = clampLife((agent.thirst ?? 25) + dt * (weather === 'drought' ? 1.02 : .7) * effort, 0, 100);
   agent.socialNeed = clampLife(agent.socialNeed + dt * 0.27, 0, 100);
-  const suffering = agent.hunger > 85 || agent.energy < 15;
+  const suffering = agent.hunger > 85 || agent.thirst > 87 || agent.energy < 15;
   const rainStress = weather === 'rain' && agent.purpose !== 'resting' && agent.purpose !== 'eating';
   const recovery = agent.hunger < 55 && agent.energy > 45;
   agent.mood = clampLife(agent.mood + dt * (suffering ? -0.22 : rainStress ? -0.045 : recovery ? 0.026 : -0.005), 0, 100);
@@ -61,6 +63,7 @@ export function socialBond(a, b) {
 }
 
 export function needsDecision(agent, sharedFood) {
+  if ((agent.thirst ?? 0) >= 67) return 'drink';
   if (agent.hunger >= 70 && sharedFood > 0) return 'eat';
   if (agent.energy < 24) return 'rest';
   // Sociable personalities seek company sooner; independent people tolerate solitude longer.
