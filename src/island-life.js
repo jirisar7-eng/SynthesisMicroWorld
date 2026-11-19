@@ -251,7 +251,7 @@ export function advanceVoyage(world,agent,dt){
   route.progress=clamp(route.progress+speed*dt/length,0,1);
   agent.x=route.from.x+(route.to.x-route.from.x)*route.progress;
   agent.z=route.from.z+(route.to.z-route.from.z)*route.progress;
-  agent.energy=clamp(agent.energy-dt*(vessel?.type==='boat'?.11:.25:.65),0,100);
+  agent.energy=clamp(agent.energy-dt*(vessel ? (vessel.type==='boat'?.11:.25) : .65),0,100);
   if(vessel){vessel.x=agent.x;vessel.z=agent.z;}
   if(!vessel&&agent.energy<=0){
     agent.health=0;agent.mode='distress';agent.reason='Vyčerpaný v moři čeká na pomoc.';
