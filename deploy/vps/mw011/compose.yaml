@@ -1,0 +1,70 @@
+# MW-012 private, united 3D viewer + authoritative persistent simulation.
+# Completely separate project from existing microworld_private and shared Caddy.
+name: microworld011_preview
+services:
+  sim:
+    image: local/mw011-sim:${MW011_RELEASE:?Set exact approved git SHA}
+    build:
+      context: ../../..
+      dockerfile: deploy/vps/Server.Dockerfile
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=32m
+    environment:
+      MW_BIND_ADDR: "0.0.0.0"
+      MW_PORT: "8081"
+      MW_WORLD_SAVE_PATH: "/app/state/world.json"
+      MW_START_POPULATION: "30"
+      MW_SIM_SPEED: "1"
+    volumes:
+      - world-state:/app/state
+    networks:
+      - private
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 120
+    mem_limit: 600m
+    cpus: 1.25
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+  web:
+    image: local/mw011-web:${MW011_RELEASE:?Set exact approved git SHA}
+    build:
+      context: ../../..
+      dockerfile: deploy/vps/mw011/Web.Dockerfile
+    depends_on:
+      sim:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${MW011_HOST_PORT:-18585}:8080"
+    networks:
+      - private
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 100
+    mem_limit: 192m
+    cpus: 0.75
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+networks:
+  private:
+    driver: bridge
+volumes:
+  world-state:
+    # Never run compose down --volumes or docker volume prune.
