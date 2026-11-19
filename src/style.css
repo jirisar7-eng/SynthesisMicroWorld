@@ -219,3 +219,27 @@
  .mobile-site-nav{justify-content:space-evenly}
  .mobile-site-nav .mobile-nav-link{font-size:11px}
 }
+
+
+/* MW-006B: compact world-status overlay and visible consequences of social tension */
+.page-map .material-map-label{
+  display:flex;gap:14px;align-items:center;justify-content:center;
+  bottom:22px;width:max-content;max-width:min(480px,65%);
+  padding:9px 13px;font-size:11px;letter-spacing:0;
+  border-color:#c6e4af5e;color:#f0ffe9;
+  backdrop-filter:blur(9px);white-space:nowrap;
+}
+.page-map .material-map-label span{display:flex;gap:5px;align-items:center;}
+.page-map .material-map-label strong{color:#cbe8a3;font-variant-numeric:tabular-nums;}
+.logistics-explain{border:1px solid #465c46;border-radius:9px;padding:12px 13px;margin:10px 0 16px;background:#273e2e;color:#b9d1bb;font-size:11px;line-height:1.55}
+.community-status{border-top:1px solid #436048;padding-top:17px;margin-top:12px}
+.community-stat-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:13px}
+.community-stat-row span{display:flex;align-items:center;flex-direction:column;text-align:center;padding:12px 6px;background:#293e2d;border:1px solid #405d44;border-radius:9px;font-size:10px;color:#c2d5bd;gap:6px}
+.community-stat-row strong{color:#e7f5dd;font-size:16px;font-family:Outfit,sans-serif}
+.community-status p{font-size:10px;line-height:1.6;color:#9db39d}
+@media(max-width:720px){
+ .page-map .material-map-label{left:50%;right:auto;bottom:16px;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 30px);font-size:10px;gap:9px}
+ .page-map .scene-overlay-bottom{bottom:62px}
+ .page-map .mobile-metrics{bottom:105px}
+ .community-stat-row span{padding:10px 5px;font-size:9px}
+}

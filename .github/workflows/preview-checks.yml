@@ -5,11 +5,13 @@ on:
       - feature/mw-004-living-world
       - feature/mw-005-knowledge
       - feature/mw-006-material-life
+      - feature/mw-006b-living-settlement
   pull_request:
     branches:
       - feature/mw-001-first-life
       - feature/mw-004-living-world
       - feature/mw-005-knowledge
+      - feature/mw-006-material-life
       - main
 permissions:
   contents: read
@@ -22,7 +24,7 @@ jobs:
           persist-credentials: false
       - name: Install
         run: npm install --no-audit --no-fund
-      - name: Autonomy, perception and learning tests
+      - name: Autonomy, material transport and living world tests
         run: npm test
       - name: Production build
         run: npm run build

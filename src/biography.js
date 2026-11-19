@@ -56,6 +56,8 @@ export function biography(agent,world){
     parts.push('Jeho další osobní historie teprve vzniká podle skutečných událostí simulace.');
   }
   if(p.settlement!=='První osada')parts.push('Nyní žije v komunitě '+p.settlement+'.');
+  if(agent.social?.departures>0)parts.push('Během svého života se '+agent.social.departures+
+    '× rozhodl opustit původní komunitu. Každý odchod i návrat je zaznamenán v časové ose.');
   return parts.join(' ');
 }
 export function makeLifeCard(agent,sim){
@@ -80,6 +82,9 @@ export function makeLifeCard(agent,sim){
     inventory:(p.belongings||[]).slice(),carried:agent.carry||0,
     knowledge:agent.cognition?Object.keys(agent.cognition.resources).length:0,
     timeline:p.timeline.slice().reverse(),memories:(agent.memories||[]).slice(),
+    socialStatus:agent.social?.status||'resident',
+    frustration:Math.round(agent.social?.frustration||0),
+    socialHistory:agent.social?.grievances?.slice()||[],
     departures:p.departures,day:sim.day
   };
 }
