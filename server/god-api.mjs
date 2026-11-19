@@ -80,7 +80,7 @@ export function createGodApi({sim,persist,snapshotPath,token,initialSpeed=1}){
     return filenames.filter(n=>/^god-[a-f0-9]{24}\.json$/.test(n)).sort().reverse();
   }
   async function checkpoint(source){
-    const id='god-'+randomBytes(12).toString('hex');
+    const id='god-'+Date.now().toString(16).padStart(12,'0')+randomBytes(6).toString('hex');
     // Opaque filename: never accept client-supplied filesystem paths.
     await atomicSave(join(checkpointFolder,id+'.json'),source);
     const list=await listCheckpoints();
@@ -95,15 +95,22 @@ export function createGodApi({sim,persist,snapshotPath,token,initialSpeed=1}){
     if(++actionCount>20)throw apiError(429,'rate_limit','Limit 20 změn za minutu.');
     if(!idOk(body.requestId))throw apiError(400,'request_id','Příkaz potřebuje platné requestId.');
     if(!Array.isArray(sim.godRequests))sim.godRequests=[];
+    const requestHash=hash(JSON.stringify(body)).toString('hex');
     const seen=sim.godRequests.find(x=>x.id===body.requestId);
-    if(seen)return {duplicate:true,...seen.response};
+    if(seen){
+      if(seen.requestHash!==requestHash)
+        throw apiError(409,'idempotency_conflict','Toto requestId již patří jinému příkazu.');
+      return {duplicate:true,...seen.response};
+    }
     busy=true;
-    const before=serializeWorld(sim),oldPaused=paused,oldSpeed=speed;
+    let before;
+    try{before=serializeWorld(sim);}catch(e){busy=false;throw e;}
+    const oldPaused=paused,oldSpeed=speed;
     let newCheckpoint;
     try{
       newCheckpoint=await checkpoint(before);
       const response=await operation(newCheckpoint);
-      sim.godRequests.push({id:body.requestId,response});
+      sim.godRequests.push({id:body.requestId,requestHash,response});
       sim.godRequests=sim.godRequests.slice(-80);
       await persist();
       return response;
