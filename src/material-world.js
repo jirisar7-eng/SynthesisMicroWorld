@@ -68,10 +68,14 @@ export class MaterialWorld {
   add(type,quantity=1,containerId=null) {
     if(!ITEM_INFO[type]) throw new Error('Unknown material type: '+type);
     if(!Number.isInteger(quantity)||quantity<0) throw new Error('Quantity must be nonnegative integer');
-    const container=containerId||this.defaultContainer(type);
-    if(!this.containers.has(container))throw new Error('Unknown storage container '+container);
+    // Choose an actual destination for EVERY separate item.
+    // A multi-item harvest must not overflow one basket just because its
+    // destination was computed only once before the batch was created.
+    if(containerId&&!this.containers.has(containerId))throw new Error('Unknown storage container '+containerId);
     const result=[];
     for(let i=0;i<quantity;i++){
+      const container=containerId||this.defaultContainer(type);
+      if(!this.containers.has(container))throw new Error('Unknown storage container '+container);
       const item={id:this.nextId++,type,container,wet:0,created:true};
       this.items.push(item);result.push(item);
     }
