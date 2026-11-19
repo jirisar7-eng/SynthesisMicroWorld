@@ -143,7 +143,7 @@ export class MaterialRenderer {
     }
     const existing=new Set(economy.items.map(i=>i.id));
     for(const [id,mesh] of this.itemMeshes)if(!existing.has(id)){
-      this.group.remove(mesh);this.itemMeshes.delete(id);
+      mesh.parent?.remove(mesh);this.itemMeshes.delete(id);
     }
     // One indexed layout pass: avoids O(n²) scans on mobile as stocks grow.
     const offsets=new Map();
