@@ -53,8 +53,14 @@ export function chooseSettlementSite(type,context={}){
         Math.abs(b.z-z)<(size[1]+other[1])/2+1.6;
     });
     if(occupied)continue;
-    // Do not remove standing trees or erase deposits invisibly.
-    if(obstacles.some(o=>footprintOverlaps(x,z,size[0]/2,size[1]/2,o,.9)))continue;
+    // Trees, live quarries, houses and occupied stockpiles remain protected.
+    // A removable stone/bush/sapling/fallen log becomes an ACTUAL clearance job.
+    const removable=id=>/^(boulder|bush|sapling|fallenlog)-/.test(id||'');
+    if(obstacles.some(o=>!removable(o.id)&&
+      footprintOverlaps(x,z,size[0]/2,size[1]/2,o,.9)))continue;
+    const toClear=obstacles.filter(o=>removable(o.id)&&
+      footprintOverlaps(x,z,size[0]/2,size[1]/2,o,.12)).length;
+    if(toClear>6)continue;
     if(known.length&&r>9&&!known.some(p=>Math.hypot(p.x-x,p.z-z)<10))continue;
     const trail=paths?paths.trafficAt(x,z):0;
     const nearbyTrail=paths?
@@ -62,7 +68,7 @@ export function chooseSettlementSite(type,context={}){
         .reduce((a,b)=>Math.max(a,b),0):0;
     const ringPreference=type==='farm'?15:type==='warehouse'?9:type==='hall'?12:11;
     const score=(trail*.32+nearbyTrail*.25)+13-Math.abs(r-ringPreference)*.58-slope*8
-      +Math.sin(i*1.41+seed)*.12;
+      +Math.sin(i*1.41+seed)*.12-toClear*.23;
     if(score>bestScore){best={x:Math.round(x*10)/10,z:Math.round(z*10)/10,type,score};bestScore=score;}
   }
   return best;
