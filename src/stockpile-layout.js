@@ -34,7 +34,7 @@ function logs(c,index,type){
   const x=(col-1)*(axis?.295:.785)+jitter(index*7+3,.035);
   const z=(row-1)*(axis?.785:.295)+jitter(index*11+7,.029);
   const offset=c.kind==='site'?
-    type==='wood'?{x:-2.9,z:.35}:{x:2.9,z:.35}:
+    type==='wood'?{x:-(c.buildingWidth||4)/2-1.75,z:.35}:{x:(c.buildingWidth||4)/2+1.75,z:.35}:
     c.kind==='shelves'?{x:-.52,z:-.1}:{x:0,z:0};
   // Logs start just above the actual surface; every crossed layer sits higher.
   const base=c.kind==='shelves'?.38:.17;
@@ -62,7 +62,7 @@ function stones(c,index){
   const spread=tier===0?.92:tier===1?.61:.31;
   const radius=spread*Math.sqrt((pos+.54)/n);
   const center=stackCenter(mound,2.25);
-  const offset=c.kind==='site'?{x:2.7,z:.65}:c.kind==='shelves'?{x:.7,z:-.1}:{x:0,z:0};
+  const offset=c.kind==='site'?{x:(c.buildingWidth||4)/2+1.45,z:.65}:c.kind==='shelves'?{x:.7,z:-.1}:{x:0,z:0};
   return withContainer(c,
     center.x+offset.x+Math.cos(angle)*radius+jitter(index*3,.055),
     center.z+offset.z+Math.sin(angle)*radius+jitter(index*5,.048),
