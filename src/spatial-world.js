@@ -173,12 +173,7 @@ function simplify(path,solids,radius){
 }
 
 /** Full route or null: no movement through walls and no teleporting through impassable maps. */
-export function planWalk(start,target,solids,{radius=CITIZEN_RADIUS,maxNodes=5500}={}){
-  // Broad-phase lives only for one planning request; no stale collision cache.
-  solids=indexSolids(solids);
-  const goal=approachPoint(start,target,solids,radius);
-  if(!goal)return null;
-  if(isBlocked(start,solids,radius))return null;
+function routeToGoal(start,goal,solids,radius,maxNodes){
   if(segmentClear(start,goal,solids,radius))return [goal];
   const startGrid=nearbyWalkableGrid(start,solids,radius);
   const endGrid=nearbyWalkableGrid(goal,solids,radius);
@@ -209,6 +204,34 @@ export function planWalk(start,target,solids,{radius=CITIZEN_RADIUS,maxNodes=550
   const cells=[];for(let c=finished;c;c=c.parent)cells.push(loc(c.ix*CELL,c.iz*CELL));
   cells.reverse();
   return simplify([start,...cells,goal],solids,radius);
+}
+
+/** A blocked target has several legal approach points, not just a single one.
+ * If the closest edge is isolated behind boulders, try another boundary.
+ */
+export function planWalk(start,target,solids,{radius=CITIZEN_RADIUS,maxNodes=5500}={}){
+  solids=indexSolids(solids);
+  const first=approachPoint(start,target,solids,radius);
+  if(!first||isBlocked(start,solids,radius))return null;
+  const firstRoute=routeToGoal(start,first,solids,radius,maxNodes);
+  if(firstRoute)return firstRoute;
+  const heading=Math.atan2(start.z-target.z,start.x-target.x);
+  const base=Math.max(.5,hypot(first,target));
+  let attempts=0;
+  for(const extra of [0,.5,1.0,1.8,2.8]){
+    const distance=base+extra;
+    for(let j=1;j<=24;j++){
+      const offset=(j%2?1:-1)*Math.ceil(j/2)*Math.PI/12;
+      const angle=heading+offset;
+      const candidate=loc(target.x+distance*Math.cos(angle),
+        target.z+distance*Math.sin(angle));
+      if(hypot(candidate,first)<.25||isBlocked(candidate,solids,radius))continue;
+      const route=routeToGoal(start,candidate,solids,radius,Math.min(maxNodes,2400));
+      if(route)return route;
+      if(++attempts>=14)return null;
+    }
+  }
+  return null;
 }
 
 /** Sample a safe spawn position (used only at initial population creation). */
