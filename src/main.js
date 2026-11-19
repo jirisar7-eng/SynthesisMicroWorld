@@ -11,6 +11,9 @@ import {SocialDynamics} from './social-dynamics.js';
 import {createGroundTexture} from './ground-details.js';
 import {createForestPatches,createTrampledCamp,createGroundClutter} from './terrain-details.js';
 import {loadSpeed} from './carry-poses.js';
+import {initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS} from './construction-stages.js';
+import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS} from './avatar-modes.js';
+import {fetchExternalWeather} from './external-world-api.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot} from './spatial-world.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
@@ -54,6 +57,7 @@ class Civilization {
     this.syncStock();this.lastFireRecord=null;this.lastFireEvent=-100;
     this.paths=new Footpaths();this.lastPathReport=-100;this.lastMaterialReport=-100;
     this.nature=60;this.cooperation=80;this.messages=[];this.listeners=[];
+    this.avatar=createAvatar();this.externalWeather=null;this.externalWeatherEnabled=false;
     this.weather={kind:'clear',until:0};this.lastMiracle=-100;this.meetings=new Map();this.meetingSeq=0;this.lastNightNotice=-1;
     const worldRng=seeded(217); // same real terrain for every fresh simulation
     this.trees=points(83,13,34,0,worldRng).map((p,i)=>({...p,id:i,stock:9,maxStock:9}));
@@ -169,22 +173,35 @@ class Civilization {
   startConstructionTrip(a){
     const project=this.construction;
     if(!project)return;
+    if(project.phase==='survey'){
+      this.go(a,'surveySite',project,'Zaměřuje plochu, zjišťuje nerovnosti a překážky.');return;
+    }
+    if(project.phase==='clear'){
+      if(project.clearables.length){
+        this.go(a,'clearSite',project,'Jde odstranit '+project.clearables[0].type+' z budoucího domu.');return;
+      }
+      beginPhase(project,'grading',this.seconds,a.id);
+    }
+    if(project.phase==='grading'){
+      this.go(a,'gradeSite',project,'Vyrovná a zhutní stavební podklad před základy.');return;
+    }
+    if(['foundation','frame','finish'].includes(project.phase)){
+      if(!validStage(project,this.material.projectReady(project.id)))return;
+      this.go(a,'build',project,'Pokračuje ve fázi '+CONSTRUCTION_LABELS[project.phase]+'.');return;
+    }
+    if(project.phase!=='hauling')return;
     if(this.material.projectReady(project.id)){
-      project.phase='building';
-      this.go(a,'build',project,
-        'Všechny skutečné polena a kameny už dorazily na staveniště. Může začít stavět.');
-      return;
+      beginPhase(project,'foundation',this.seconds,a.id);
+      this.go(a,'build',project,'Materiál je fyzicky na staveništi. Připraví základy.');return;
     }
     const pending=this.material.pendingProject(project.id,4);
-    if(!pending.length){
-      a.choiceAt=this.seconds+1.5;return;
-    }
+    if(!pending.length){a.choiceAt=this.seconds+1.5;return;}
     const source=this.material.containers.get(pending[0].container);
+    if(!source){a.choiceAt=this.seconds+1.5;return;}
     const ids=pending.filter(i=>i.container===source.id).map(i=>i.id);
-    this.go(a,'pickupBuild',source,
-      'Jde na skutečnou hromadu nabrat '+ids.length+' kusů materiálu.',{
-        projectId:project.id,ids
-      });
+    this.go(a,'pickupBuild',source,'Nabírá '+ids.length+' kusů materiálu pro '+CONSTRUCTION_LABELS[project.phase]+'.',{
+      projectId:project.id,ids
+    });
   }
   decide(a){
     if(this.seconds<a.choiceAt)return;
@@ -279,10 +296,11 @@ class Civilization {
           type:proposal.type,x:proposal.x,z:proposal.z,builderId:a.id,time:this.seconds
         });
         if(project){
-          this.construction={...project,agentId:a.id,progress:0,phase:'hauling'};
+          this.construction=initializeBuildSite(this,{...project,agentId:a.id});
           this.syncStock();
           this.addEvent('Nová autonomní stavba',a.name+' vybral místo pro '+proposal.recipe.name+
-            '. Nejdříve musí fyzicky přepravit '+project.total+' kusů materiálu.','⌂');
+            '. Nejdříve zaměří pozemek, odstraní '+this.construction.clearables.length+
+            ' překážek a srovná terén. Potom přiveze '+project.total+' kusů materiálu.','⌂');
           lifeEvent(a,this.day,'Navrhl '+proposal.recipe.name,proposal.reason);
           this.startConstructionTrip(a);
           return;
@@ -292,7 +310,8 @@ class Civilization {
     if(this.construction && this.construction.agentId===a.id){
       this.startConstructionTrip(a);return;
     }
-    if(this.construction && this.material.projectReady(this.construction.id) &&
+    if(this.construction &&
+      this.construction.phase!=='survey' &&
       !this.construction.assistantId && a.id!==this.construction.agentId&&a.energy>42 &&
       Math.random()<.22){
       this.construction.assistantId=a.id;
@@ -453,6 +472,15 @@ class Civilization {
         a.name+' donesl zpět '+n+' skutečných předmětů.','⌑');
       this.idle(a);return;
     }
+    if(a.purpose==='surveySite'){
+      this.work(a,'surveying',4.5,'Prohlíží svah a vytyčuje budoucí půdorys.');return;
+    }
+    if(a.purpose==='clearSite'){
+      this.work(a,'clearing',4.2,'Ručně uvolňuje překážku ze stavební plochy.');return;
+    }
+    if(a.purpose==='gradeSite'){
+      this.work(a,'grading',10,'Srovnává a hutní podklad pro rovnou podlahu.');return;
+    }
     if(a.purpose==='pickupBuild'){
       const order=a.resource;
       if(order&&this.material.pickProjectLoad(a,order.projectId,order.ids)){
@@ -562,8 +590,13 @@ class Civilization {
       a.carry=0;a.carryType=null;this.syncStock();this.idle(a);return;
     }
     if(a.purpose==='build'){
-      this.work(a,'building',14,
-        'Staví '+(RECIPES[this.construction?.type]?.name||'budovu')+' z nasbíraného materiálu.');return;
+      const phase=this.construction?.phase;
+      if(!this.construction||!validStage(this.construction,this.material.projectReady(this.construction.id))){
+        this.idle(a);return;
+      }
+      const duration={foundation:10,frame:15,finish:10}[phase]||10;
+      this.work(a,'building',duration,'Provádí '+(CONSTRUCTION_LABELS[phase]||'stavbu')+
+        ' z fyzicky dovezeného materiálu.');return;
     }
     if(a.purpose==='rest'){this.work(a,'resting',6,'Odpočívá po práci v blízkosti osady.');return;}
     if(a.purpose==='explore'){if(this.seconds-this.lastScout>15){this.addEvent('Průzkum okolí',a.name+' prozkoumal další kus krajiny.','⌕');this.lastScout=this.seconds;}this.idle(a);}
@@ -671,6 +704,36 @@ class Civilization {
       }
       this.syncStock();this.idle(a);return;
     }
+    if(a.purpose==='surveying'){
+      if(this.construction){
+        this.construction.surveyed=true;
+        beginPhase(this.construction,this.construction.clearables.length?'clear':'grading',this.seconds,a.id);
+        this.addEvent('Stavební průzkum',a.name+' zaměřil místo pro '+RECIPES[this.construction.type].name+
+          '. Zbývá uklidit '+this.construction.clearables.length+' překážek.','⌖');
+      }
+      experienceSkill(a,'building',2);this.idle(a);return;
+    }
+    if(a.purpose==='clearing'){
+      if(this.construction?.phase==='clear'){
+        const cleared=clearNextObject(this,this.construction);
+        if(cleared&&!cleared.missing){
+          this.addEvent('Příprava pozemku',a.name+' odklidil '+cleared.type+
+            '. Materiál zůstal vedle stavby jako reálná zásoba.','◈');
+        }
+        if(!this.construction.clearables.length)
+          beginPhase(this.construction,'grading',this.seconds,a.id);
+      }
+      experienceSkill(a,'building',2);this.idle(a);return;
+    }
+    if(a.purpose==='grading'){
+      if(this.construction?.phase==='grading'){
+        this.construction.graded=true;
+        beginPhase(this.construction,'hauling',this.seconds,a.id);
+        this.addEvent('Stavební plocha srovnána',
+          a.name+' vytvořil rovný a zhutněný základ. Teď se musí dovézt materiál.','▤');
+      }
+      experienceSkill(a,'building',3);this.idle(a);return;
+    }
     if(a.purpose==='assisting'){
       if(this.construction){
         this.construction.extraProgress=Math.min(5,(this.construction.extraProgress||0)+1);
@@ -679,9 +742,24 @@ class Civilization {
       this.idle(a);return;
     }
     if(a.purpose==='building' && this.construction){
-      if(!this.material.projectReady(this.construction.id)){
+      if(!validStage(this.construction,this.material.projectReady(this.construction.id))){
         this.idle(a);return;
       }
+      const stage=this.construction.phase;
+      if(stage==='foundation'){
+        this.construction.foundationComplete=true;
+        beginPhase(this.construction,'frame',this.seconds,a.id);
+        this.addEvent('Hotové základy',a.name+' dokončil základovou konstrukci. Nyní vzniká hrubá stavba a lešení.','▱');
+        experienceSkill(a,'building',4);this.idle(a);return;
+      }
+      if(stage==='frame'){
+        this.construction.frameComplete=true;
+        beginPhase(this.construction,'finish',this.seconds,a.id);
+        this.addEvent('Hrubá stavba',a.name+' vztyčil nosnou konstrukci. Lešení zůstává do dokončení.','⌂');
+        experienceSkill(a,'building',5);this.idle(a);return;
+      }
+      if(stage!=='finish'){this.idle(a);return;}
+      beginPhase(this.construction,'complete',this.seconds,a.id);
       const completed={...this.construction},type=completed.type;
       if(!this.material.finalizeProject(completed.id)){this.idle(a);return;}
       const building=this.material.addStructure(type,completed.x,completed.z,a.id,this.seconds);
@@ -743,6 +821,16 @@ class Civilization {
     // Recomputed after changes in construction, stockpiles and autonomous camps.
     const worldSolids=indexSolids(solidFootprints(this));
     for(const a of this.agents){
+      const encounter=encounterEffect(a,this.avatar,this.seconds);
+      if(encounter){
+        remember(a,encounter.text);
+        if(encounter.kind==='god'){
+          lifeEvent(a,this.day,'Spatřil božské zjevení',encounter.text);
+          this.addEvent('Bůh mezi obyvateli',a.name+' spatřil boha a raduje se.','✦');
+        }else if(encounter.helpful&&this.material.foodCount()>2){
+          this.addEvent('Soucit s poutníkem',a.name+' uvažuje o pomoci chudému cizinci.','♡');
+        }
+      }
       const discoveries=observeNearby(a,{trees:this.trees,berries:this.berries,stones:this.stones,apples:this.apples},this.seconds,7.5);
       if(discoveries.length && this.seconds-this.lastDiscoveryReport>=12){
         const kind=discoveries.some(x=>x.type==='berry')?'jedlé plody':'stromy';
@@ -783,7 +871,9 @@ class Civilization {
         if(a.purpose==='building'&&this.construction){
           const helpers=this.agents.filter(p=>p.purpose==='assisting').length;
           const ratio=clamp(1-a.workRemaining/a.workTotal,0,1);
-          this.construction.progress=Math.min(1,ratio+(this.construction.extraProgress||0)*.03);
+          const start=phaseProgress(this.construction);
+          const span={foundation:.18,frame:.19,finish:.10}[this.construction.phase]||0;
+          this.construction.progress=Math.min(.999,start+span*ratio);
         }
         if(a.workRemaining<=0)this.completed(a);
       }
