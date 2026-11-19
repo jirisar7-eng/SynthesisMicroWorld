@@ -33,7 +33,7 @@ jobs:
             grep -F '127.0.0.1'
       - name: Build real static Docker image and run simulation tests
         run: docker build --tag local/microworld:vps-ci --file deploy/vps/Dockerfile .
-      - name: Smoke test exact VPS Compose topology (internal bridge / loopback)
+      - name: Smoke test exact VPS Compose topology (isolated bridge / loopback)
         env:
           MICROWORLD_RELEASE: vps-ci
           MICROWORLD_PORT: "18583"
