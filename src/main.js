@@ -1305,6 +1305,20 @@ try{
   for(const id of ['btn-reset-camera','btn-reset-camera-menu'])
     el(id)?.addEventListener('click',resetIslandView);
   const clock=new THREE.Clock();let uiTime=0,rendererFailed=false;
+  // Optional mobile performance meter, enabled only with ?perf=1.
+  // Sample actual rendered frames over real wall time, not simulated days.
+  const showPerf=new URLSearchParams(location.search).get('perf')==='1';
+  let perfBadge=null,perfFrames=0,perfSince=performance.now();
+  if(showPerf){
+    perfBadge=document.createElement('output');
+    perfBadge.id='mw-render-fps';
+    perfBadge.setAttribute('aria-hidden','true');
+    perfBadge.style.cssText='position:fixed;top:73px;left:50%;transform:translateX(-50%);'+
+      'z-index:25;padding:7px 10px;border-radius:9px;background:#142c25e6;'+
+      'color:#e5f3df;font:600 11px system-ui;white-space:nowrap;pointer-events:none';
+    perfBadge.textContent='Měřím plynulost 3D...';
+    document.body.append(perfBadge);
+  }
   function frame(){
     // UI failures must NEVER terminate requestAnimationFrame: otherwise the
     // map looks frozen while /api/world continues to show advancing days.
@@ -1332,6 +1346,17 @@ try{
         clearUIFailure();
       }catch(error){
         showUIFailure(error,'ui-frame');
+      }
+    }
+    if(perfBadge&&!rendererFailed&&document.body.classList.contains('page-map')){
+      perfFrames++;
+      const now=performance.now(),elapsed=now-perfSince;
+      if(elapsed>=1200){
+        const stats=window.__MW_VISUAL_STATS__;
+        const fps=Math.round(perfFrames*1000/elapsed);
+        perfBadge.textContent=fps+' FPS · '+stats.drawCalls+
+          ' 3D volání · '+stats.visibleItemMeshes+'/'+stats.inventoryItemCount+' zásob';
+        perfSince=now;perfFrames=0;
       }
     }
     requestAnimationFrame(frame);
