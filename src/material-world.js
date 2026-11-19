@@ -303,11 +303,12 @@ export class MaterialWorld {
     return goods.length;
   }
   /** An interrupted haul produces an actual loose-ground container, never a lost item. */
-  dropCargo(agent,reason='Interrupted transport'){
+  dropCargo(agent,reason='Interrupted transport',position=null){
     const goods=this.cargo(agent);
     if(!goods.length)return null;
     const id='drop-'+this.nextId++;
-    const patch={id,kind:'drop',name:'Odložené věci',x:agent.x,z:agent.z,roof:false,
+    const patch={id,kind:'drop',name:'Odložené věci',
+      x:position?.x??agent.x+.95,z:position?.z??agent.z,roof:false,
       ownerId:agent.id,reason};
     this.containers.set(id,patch);
     for(const item of goods)item.container=id;
