@@ -1,3 +1,5 @@
+import {layoutStockItem} from './stockpile-layout.js';
+
 /**
  * MW-006: physically accounted settlement materials.
  * Every unit in the shared inventory is a distinct object with an ID,
@@ -55,7 +57,12 @@ export class MaterialWorld {
     if(type==='wood'||type==='twig')return 'woodpile';
     if(type==='stone')return 'stonepile';
     if(type==='seed')return 'seedtray';
-    if((type==='apple'||type==='berry')&&this.baskets.length)return this.baskets.at(-1).id;
+    if(type==='apple'||type==='berry'){
+      // A woven basket has finite volume: do not grow a tall fruit tower forever.
+      for(const basket of this.baskets.toReversed()){
+        if(this.items.filter(i=>i.container===basket.id).length<12)return basket.id;
+      }
+    }
     return 'crate-1';
   }
   add(type,quantity=1,containerId=null) {
@@ -371,16 +378,10 @@ export class MaterialWorld {
 
   itemLayout(item,indexOverride=null) {
     const container=this.containers.get(item.container);
-    if(!container)return {x:0,z:0};
     const index=indexOverride===null?
       this.items.filter(i=>i.container===item.container&&i.type===item.type)
         .findIndex(i=>i.id===item.id):indexOverride;
-    const typeOffset={wood:{x:0,z:0},twig:{x:.8,z:0},stone:{x:0,z:0},berry:{x:0,z:0},apple:{x:.7,z:0},seed:{x:0,z:0},grain:{x:1,z:0}}[item.type];
-    const perRow=container.kind==='carry'?3:container.kind==='site'?6:container.kind==='basket'?4:container.kind==='crate'?5:9;
-    const row=Math.floor(index/perRow),col=index%perRow;
-    const spacing=container.kind==='carry'?.25:container.kind==='basket'?.17:container.kind==='crate'?.21:.26;
-    return {x:container.x+(container.kind==='carry'?0:typeOffset.x)+(col-(perRow-1)/2)*spacing,
-      z:container.z+(container.kind==='carry'?0:typeOffset.z)+row*spacing};
+    return layoutStockItem(item,container,index);
   }
   snapshot(){
     const byType={};
