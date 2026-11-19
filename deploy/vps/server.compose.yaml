@@ -1,0 +1,36 @@
+name: microworld_sim_private
+services:
+  sim:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Server.Dockerfile
+    image: local/microworld-sim:preview
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=32m
+    environment:
+      MW_BIND_ADDR: "0.0.0.0"
+      MW_PORT: "8081"
+      MW_WORLD_SAVE_PATH: /app/state/world.json
+      MW_START_POPULATION: "30"
+      MW_SIM_SPEED: "1"
+    volumes:
+      - microworld-sim-state:/app/state
+    ports:
+      - "127.0.0.1:18584:8081"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 100
+    mem_limit: 600m
+    cpus: 1.0
+    networks:
+      - sim_private
+networks:
+  sim_private:
+    driver: bridge
+volumes:
+  microworld-sim-state:
