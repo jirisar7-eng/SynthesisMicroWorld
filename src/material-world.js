@@ -74,7 +74,7 @@ export class MaterialWorld {
   isAvailable(item){
     if(item.reservedFor)return false;
     const c=this.containers.get(item.container);
-    return !!c && c.kind!=='carry' && c.kind!=='site';
+    return !!c && c.kind!=='carry' && c.kind!=='site' && c.kind!=='tentStorage';
   }
   count(type){return this.items.filter(x=>x.type===type&&this.isAvailable(x)).length;}
   countStored(type){return this.items.filter(x=>x.type===type&&this.containers.get(x.container)?.kind!=='carry').length;}
@@ -91,9 +91,20 @@ export class MaterialWorld {
     this.items=this.items.filter(x=>!ids.has(x.id));
     return selected;
   }
+  findFoodSource(){
+    const item=this.items.find(i=>FOOD_TYPES.includes(i.type)&&this.isAvailable(i));
+    if(!item)return null;
+    return {item,container:this.containers.get(item.container)};
+  }
+  consumeFoodFrom(containerId){
+    const item=this.items.find(i=>FOOD_TYPES.includes(i.type)&&i.container===containerId&&this.isAvailable(i));
+    if(!item)return null;
+    this.items=this.items.filter(i=>i.id!==item.id);
+    return item;
+  }
   consumeFood(){
-    for(const t of ['berry','apple','grain']){const r=this.consume(t,1);if(r)return r[0];}
-    return null;
+    const source=this.findFoodSource();
+    return source?this.consumeFoodFrom(source.container.id):null;
   }
   canAfford(recipe){return this.count('wood')>=recipe.wood&&this.count('stone')>=recipe.stone;}
   pay(recipe){
@@ -191,8 +202,17 @@ export class MaterialWorld {
     this.logistics.transported+=2;
     return true;
   }
-  packDepartureFood(agent){
-    const food=this.items.filter(i=>FOOD_TYPES.includes(i.type)&&this.isAvailable(i)).slice(0,2);
+  departureFoodSource(){
+    for(const c of this.containers.values()){
+      if(c.kind==='carry'||c.kind==='site'||c.kind==='tentStorage')continue;
+      const count=this.items.filter(i=>i.container===c.id&&FOOD_TYPES.includes(i.type)&&this.isAvailable(i)).length;
+      if(count>=2)return c;
+    }
+    return null;
+  }
+  packDepartureFood(agent,sourceId=null){
+    const food=this.items.filter(i=>FOOD_TYPES.includes(i.type)&&this.isAvailable(i)&&
+      (!sourceId||i.container===sourceId)).slice(0,2);
     if(food.length!==2)return false;
     const bag=this.cargoContainer(agent);
     for(const item of food)item.container=bag.id;
@@ -349,11 +369,12 @@ export class MaterialWorld {
     return true;
   }
 
-  itemLayout(item) {
+  itemLayout(item,indexOverride=null) {
     const container=this.containers.get(item.container);
     if(!container)return {x:0,z:0};
-    const peers=this.items.filter(i=>i.container===item.container&&i.type===item.type);
-    const index=peers.findIndex(i=>i.id===item.id);
+    const index=indexOverride===null?
+      this.items.filter(i=>i.container===item.container&&i.type===item.type)
+        .findIndex(i=>i.id===item.id):indexOverride;
     const typeOffset={wood:{x:0,z:0},twig:{x:.8,z:0},stone:{x:0,z:0},berry:{x:0,z:0},apple:{x:.7,z:0},seed:{x:0,z:0},grain:{x:1,z:0}}[item.type];
     const perRow=container.kind==='carry'?3:container.kind==='site'?6:container.kind==='basket'?4:container.kind==='crate'?5:9;
     const row=Math.floor(index/perRow),col=index%perRow;
