@@ -183,14 +183,26 @@ export class MaterialWorld {
     }
     return null;
   }
-  prepareDeparture(agent){
+  packDepartureWood(agent){
     const wood=this.items.filter(i=>i.type==='wood'&&this.isAvailable(i)).slice(0,2);
-    const food=this.items.filter(i=>FOOD_TYPES.includes(i.type)&&this.isAvailable(i)).slice(0,2);
-    if(wood.length!==2||food.length!==2)return false;
+    if(wood.length!==2)return false;
     const bag=this.cargoContainer(agent);
-    for(const item of [...wood,...food])item.container=bag.id;
-    this.logistics.transported+=4;
+    for(const item of wood)item.container=bag.id;
+    this.logistics.transported+=2;
     return true;
+  }
+  packDepartureFood(agent){
+    const food=this.items.filter(i=>FOOD_TYPES.includes(i.type)&&this.isAvailable(i)).slice(0,2);
+    if(food.length!==2)return false;
+    const bag=this.cargoContainer(agent);
+    for(const item of food)item.container=bag.id;
+    this.logistics.transported+=2;
+    return true;
+  }
+  cancelDeparture(agent){
+    const goods=this.cargo(agent);
+    for(const item of goods)item.container=this.defaultContainer(item.type);
+    return goods.length;
   }
   pitchTent(agent,site,time){
     const bag=this.cargo(agent);
