@@ -1,5 +1,5 @@
 import http from 'node:http';
-import {readFile,writeFile,rename,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,rename,mkdir,unlink} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {Civilization} from '../src/simulation-core.js';
 import {populateFounders,livingSummary} from '../src/generations.js';
@@ -30,7 +30,7 @@ if(!restored){
   sim.addEvent('Nepřetržitý svět',
     'Serverová simulace zahájila vlastní čas pro '+maxPopulation+' zakladatelů.','⌛');
 }
-let last=process.hrtime.bigint(),savingPromise=null,stopping=false,lastSavedAt=null;
+let last=process.hrtime.bigint(),saveQueue=Promise.resolve(),stopping=false,lastSavedAt=null;
 const timeStart=new Date().toISOString();
 const godApi=createGodApi({sim,persist:snapshot,snapshotPath,
   token:process.env.MW_GOD_ADMIN_TOKEN,initialSpeed:speed});
@@ -91,18 +91,18 @@ const server=http.createServer((req,res)=>{
   res.end(JSON.stringify({error:'not_found'}));
 });
 async function snapshot(){
-  // Simultaneous autosaves and god actions share one durable write.
-  if(savingPromise)return savingPromise;
-  savingPromise=(async()=>{
+  // Queue distinct writes. A god mutation must not acknowledge an older autosave.
+  const task=saveQueue.then(async()=>{
     const tmp=snapshotPath+'.tmp';
     try{
       await mkdir(dirname(snapshotPath),{recursive:true});
       await writeFile(tmp,serializeWorld(sim),{mode:0o600});
       await rename(tmp,snapshotPath);
       lastSavedAt=new Date().toISOString();
-    }catch(e){await import('node:fs/promises').then(fs=>fs.unlink(tmp).catch(()=>{}));throw e;}
-  })();
-  try{return await savingPromise;}finally{savingPromise=null;}
+    }catch(e){await unlink(tmp).catch(()=>{});throw e;}
+  });
+  saveQueue=task.catch(()=>{});
+  return task;
 }
 let loopTimer=null,saveTimer=null;
 async function stop(signal){
