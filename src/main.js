@@ -1189,7 +1189,7 @@ class Diorama {
       const rim=new THREE.Mesh(new THREE.TorusGeometry(.76,.19,9,22),rock);
       rim.rotation.x=-Math.PI/2;rim.position.y=.10;
       rim.castShadow=true;rim.receiveShadow=true;group.add(rim);
-      const pool=new THREE.Mesh(new THREE.CircleGeometry(.65,24),water);
+      const pool=new THREE.Mesh(new THREE.CircleGeometry(.65,24),water.clone());
       pool.rotation.x=-Math.PI/2;pool.position.y=.07;pool.receiveShadow=true;group.add(pool);
       const wetEarth=new THREE.Mesh(new THREE.CircleGeometry(1.03,24),this.mat('#698176'));
       wetEarth.rotation.x=-Math.PI/2;wetEarth.position.y=.015;group.add(wetEarth);
