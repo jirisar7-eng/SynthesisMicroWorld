@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {describeSceneFailure} from './scene-diagnostics.js';
+import {interpolateRemotePose,remoteSnapshotMovement,REMOTE_SNAPSHOT_INTERVAL_SECONDS} from './remote-motion.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
 import {MaterialWorld, RECIPES, FOOD_TYPES, ITEM_INFO} from './material-world.js';
@@ -35,6 +36,8 @@ class Diorama {
     // MUST be passed explicitly, never read as a nonexistent global.
     this.getSelectedAgent=selection.getSelectedAgent||(()=>0);
     this.chooseAgent=selection.chooseAgent||(()=>{});
+    this.remoteMotion=null;
+    this.remoteMotionAge=REMOTE_SNAPSHOT_INTERVAL_SECONDS;
     Diorama.lastStage='webgl';
     this.sim=sim;this.container=container;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#c8dfdd');this.scene.fog=new THREE.Fog('#c8dfdd',65,205);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
@@ -433,8 +436,25 @@ class Diorama {
     const chimney=this.mesh(new THREE.BoxGeometry(.47,1.25,.5),this.mat('#a07d65'),1.05,3.31,-.35);chimney.visible=progress>.8;g.add(chimney);
     this.scene.add(g);return{group:g,walls,roof,door,chimney};
   }
+  /** Animate only positions proven by consecutive server snapshots. This
+   * creates no AI decisions or intermediate authoritative world state. */
+  queueServerMotion(previous){
+    const transitions=new Map();
+    for(const agent of this.sim.agents){
+      if(!isLiving(agent))continue;
+      const past=previous.get(agent.id);
+      if(!past)continue;
+      const model=this.people[agent.id];
+      const from=model&&model.visible?
+        {x:model.position.x,z:model.position.z}:past;
+      transitions.set(agent.id,{from,to:{x:agent.x,z:agent.z}});
+    }
+    this.remoteMotion=transitions;
+    this.remoteMotionAge=0;
+  }
   update(time){
     this.timer+=time;
+    this.remoteMotionAge+=time;
     const phase=(this.sim.seconds%75)/75;
     const daylight=phase<.12?(.42+.58*phase/.12):phase<.67?1:phase<.89?(1-.58*(phase-.67)/.22):.42;
     const raining=this.sim.weather.kind==='rain';
@@ -480,8 +500,13 @@ class Diorama {
       const g=this.people[i];g.visible=isLiving(a);
       g.scale.setScalar(isDependent(a)?.62:1);
       if(!isLiving(a))return;
-      g.position.set(a.x,(a.mode==='voyage'?this.water.position.y+.32:terrainHeight(a.x,a.z)+.04)+
-        (a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),a.z);
+      const transition=this.remoteMotion?.get(a.id);
+      const pose=transition?
+        interpolateRemotePose(transition.from,transition.to,
+          this.remoteMotionAge/REMOTE_SNAPSHOT_INTERVAL_SECONDS):a;
+      g.position.set(pose.x,
+        (a.mode==='voyage'?this.water.position.y+.32:terrainHeight(pose.x,pose.z)+.04)+
+        (a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),pose.z);
       if(a.mode==='walk' && a.target){const target=a.waypoints?.[0]||a.target;
         const dx=target.x-a.x,dz=target.z-a.z;
         if(Math.hypot(dx,dz)>.08)g.rotation.y=Math.atan2(dx,dz);}
@@ -592,6 +617,7 @@ if(thirtyScenario){
 }
 let world;
 let remoteWorldMode=false,remoteWorldError=null;
+let serverMovement={moved:0,checked:0},consecutiveStillSamples=0;
 let initialSaveStatus=thirtyScenario?'Scénář 30 obyvatel':'Nový svět';
 try{
   const rawSave=window.localStorage.getItem(activeSaveKey);
@@ -611,8 +637,21 @@ async function refreshServerWorld(){
   if(!response.ok)throw new Error('Server HTTP '+response.status);
   const snapshot=await response.text();
   const oldSeconds=remoteWorldMode?sim.seconds:-1;
+  // Reject out-of-order responses BEFORE touching the visible world mirror.
+  const remoteSeconds=JSON.parse(snapshot)?.state?.seconds;
+  if(oldSeconds>=0&&(!Number.isFinite(remoteSeconds)||remoteSeconds<oldSeconds))
+    throw new Error('World clock went backwards');
+  const previous=remoteWorldMode?
+    sim.agents.map(a=>({id:a.id,x:a.x,z:a.z,alive:a.alive})):null;
   const state=hydrateWorldMirror(sim,snapshot);
-  if(oldSeconds>=0&&state.seconds<oldSeconds)throw new Error('World clock went backwards');
+  if(previous&&world){
+    serverMovement=remoteSnapshotMovement(previous,sim.agents);
+    consecutiveStillSamples=serverMovement.checked&&serverMovement.moved===0?
+      consecutiveStillSamples+1:0;
+    if(document.body.classList.contains('page-map'))
+      world.queueServerMotion(new Map(previous.map(a=>[a.id,a])));
+    else world.remoteMotion=null;
+  }
   remoteWorldMode=true;remoteWorldError=null;
   if(el('save-status'))el('save-status').textContent='Automatické ukládání na VPS · den '+state.day;
   return state;
@@ -671,6 +710,10 @@ function showPage(page,push=false){
     else link.removeAttribute('aria-current');
   }
   if(page==='map')requestAnimationFrame(()=>world?.resize());
+  else requestAnimationFrame(()=>{
+    try{renderUI();}
+    catch(error){showUIFailure(error,'switch-page');}
+  });
 }
 for(const link of document.querySelectorAll('[data-page]')){
   link.addEventListener('click',event=>{
@@ -702,7 +745,14 @@ function events(){
   }
 }
 sim.listeners.push(m=>{events();if(m.title.includes('stavba')||m.title.includes('přístřešek'))announce(m.detail);});
-function chooseAgent(index){selectedAgent=index;renderUI();}
+function chooseAgent(id){
+  const index=sim.agents.findIndex(a=>a.id===Number(id));
+  if(index<0)return false;
+  selectedAgent=index;
+  try{renderUI();}
+  catch(error){showUIFailure(error,'select-npc');}
+  return true;
+}
 function drawPersonalKnowledgeMap(knowledge, person){
   const canvas=el('knowledge-map');
   if(!canvas || !document.body.classList.contains('page-overview'))return;
@@ -874,6 +924,19 @@ function renderLifePage(){
   }
 }
 function renderUI(){
+  if(remoteWorldMode){
+    const message=remoteWorldError?
+      'Spojení se serverem přerušeno — poslední známý stav':
+      serverMovement.checked?
+        'Serverový den '+sim.day+' · za poslední interval se pohnulo '+
+        serverMovement.moved+' / '+serverMovement.checked+' NPC'+
+        (consecutiveStillSamples>=4?' · delší dobu bez změny polohy':''):
+        'Serverový den '+sim.day+' · čekám na druhý snímek pro měření pohybu';
+    for(const id of ['remote-motion-overview','remote-motion-people']){
+      const status=el(id);
+      if(status){status.hidden=false;status.textContent=message;}
+    }
+  }
   el('people').textContent=livingSummary(sim.agents).living;el('wood').textContent=sim.wood;el('food').textContent=sim.food;
   el('m-people').textContent=livingSummary(sim.agents).living;el('m-wood').textContent=sim.wood;el('m-food').textContent=sim.food;
   el('day').textContent='Rok '+calendarAt(sim.day).year+' · Den '+sim.day;
@@ -906,7 +969,10 @@ function renderUI(){
     done?sim.material.structures.length+' objektů':Math.min(sim.wood,12)+' / 12';
   el('build-progress').style.width=(building?sim.construction.progress*100:done?100:
     Math.min(sim.wood/12,1)*100)+'%';
-  const a=sim.agents[selectedAgent];el('npc-avatar').textContent=a.name.charAt(0);el('npc-avatar').style.background='#'+new THREE.Color(a.color).getHexString();
+  const a=sim.agents[selectedAgent]||sim.agents.find(isLiving)||sim.agents[0];
+  if(!a)return;
+  selectedAgent=sim.agents.indexOf(a);
+  el('npc-avatar').textContent=a.name.charAt(0);el('npc-avatar').style.background='#'+new THREE.Color(a.color).getHexString();
   el('npc-name').textContent=a.name;
   el('map-npc-name').textContent=a.name;
   const actions={departWood:'Bere dřevo na cestu',departFood:'Vybírá vlastní jídlo',departCamp:'Odchází do samoty',campWander:'Žije v táboře',campLiving:'Odpočívá mimo osadu',tentEat:'Jí ve stanu',returnHome:'Vrací se domů',wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',stone:'Cestuje ke kameni',mining:'Těží kámen',apples:'Cestuje pro jablka',applepicking:'Sbírá jablka',returnstone:'Nese kámen',weave:'Jde uplést košík',weaving:'Plete košík',plant:'Jde sázet',planting:'Vysévá semena',reap:'Jde sklízet',reaping:'Sklízí úrodu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
@@ -962,11 +1028,13 @@ function renderUI(){
       article.append(title,cause,result,date);episodes.appendChild(article);
     }
   }
-    el('god-cooldown').textContent=remaining>0?
+    el('god-cooldown').textContent=remoteWorldMode?
+    'Serverový svět je pouze pro pozorování. Zásahy a změny pravidel vyžadují zabezpečené serverové ovládání.':
+    remaining>0?
     'Další zásah za '+Math.ceil(remaining)+' herních sekund · lidé stále rozhodují sami':
     'Můžeš změnit podmínky světa. Každý zásah se zapíše do historie.';
 }
-el('btn-next-npc').addEventListener('click',()=>chooseAgent((selectedAgent+1)%sim.agents.length));
+el('btn-next-npc').addEventListener('click',()=>chooseAgent(sim.agents[(selectedAgent+1)%sim.agents.length]?.id));
 for(const button of document.querySelectorAll('[data-god]')){
   button.addEventListener('click',()=>{
     const kind=button.dataset.god;
@@ -1115,6 +1183,34 @@ function showSceneFailure(error,stage){
   root.append(panel);
 }
 
+/** A failed details/card repaint cannot take the entire 3D view down.
+ * Keep the error readable without devtools and without logging credentials. */
+let lastUIError='';
+function showUIFailure(error,stage){
+  const result=describeSceneFailure(error,stage);
+  if(lastUIError!==result.diagnostic){
+    console.error('MW015_UI_FAILURE',result.diagnostic,error);
+    lastUIError=result.diagnostic;
+  }
+  let elError=el('ui-failure');
+  if(!elError){
+    elError=document.createElement('aside');
+    elError.id='ui-failure';elError.setAttribute('role','alert');
+    elError.style.cssText='position:fixed;z-index:30;top:72px;left:12px;right:12px;' +
+      'max-width:680px;margin:auto;padding:12px;background:#402820;color:#fff;' +
+      'border:1px solid #c89977;border-radius:10px;overflow-wrap:anywhere;' +
+      'font-size:12px;box-shadow:0 6px 28px #0009';
+    document.body.appendChild(elError);
+  }
+  elError.textContent='Chyba rozhraní '+result.code+' · '+result.diagnostic+
+    ' · Živý svět pokračuje. Otevři Přehled nebo zkus obnovit stránku.';
+}
+function clearUIFailure(){
+  if(!lastUIError)return;
+  lastUIError='';
+  el('ui-failure')?.remove();
+}
+
 try{
   world=new Diorama(el('scene'),sim,{
     getSelectedAgent:()=>selectedAgent,
@@ -1132,25 +1228,45 @@ try{
   };
   for(const id of ['btn-reset-camera','btn-reset-camera-menu'])
     el(id)?.addEventListener('click',resetIslandView);
-  const clock=new THREE.Clock();let uiTime=0;
+  const clock=new THREE.Clock();let uiTime=0,rendererFailed=false;
   function frame(){
+    // UI failures must NEVER terminate requestAnimationFrame: otherwise the
+    // map looks frozen while /api/world continues to show advancing days.
+    const delta=Math.min(clock.getDelta(),.06);
     try{
-      const delta=Math.min(clock.getDelta(),.06);
       const actual=paused?0:delta*speeds[speedIndex];
       if(document.body.classList.contains('page-map')&&sim.avatar.mode!=='observer')
         advanceAvatar(sim.avatar,delta,indexSolids(solidFootprints(sim)));
       if(actual&&!remoteWorldMode)sim.update(actual);
-      if(document.body.classList.contains('page-map'))world.update(delta);
-      uiTime+=delta;if(uiTime>.28){renderUI();uiTime=0;}
-      requestAnimationFrame(frame);
     }catch(error){
-      showSceneFailure(error,'frame');
+      showUIFailure(error,'simulation-frame');
     }
+    if(document.body.classList.contains('page-map')&&!rendererFailed){
+      try{world.update(delta);}
+      catch(error){
+        rendererFailed=true;
+        showSceneFailure(error,'renderer-frame');
+      }
+    }
+    uiTime+=delta;
+    if(uiTime>(remoteWorldMode?.9:.3)){
+      uiTime=0;
+      try{
+        renderUI();
+        clearUIFailure();
+      }catch(error){
+        showUIFailure(error,'ui-frame');
+      }
+    }
+    requestAnimationFrame(frame);
   }
-  events();renderUI();frame();
+  events();
+  try{renderUI();}catch(error){showUIFailure(error,'first-ui');}
+  frame();
 }catch(error){
   showSceneFailure(error,Diorama.lastStage||'initialization');
-  events();renderUI();
+  events();
+  try{renderUI();}catch(uiError){showUIFailure(uiError,'3d-fallback-ui');}
 }
 }
 launchMicroWorld().catch(error=>{

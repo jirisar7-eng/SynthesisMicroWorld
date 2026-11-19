@@ -1,0 +1,59 @@
+name: MW-015 Live NPC and UI Recovery
+on:
+  push:
+    branches: [feature/mw-015-npc-motion-ui-recovery]
+  pull_request:
+    paths:
+      - 'src/main.js'
+      - 'src/remote-motion.js'
+      - 'tests/remote-motion.test.js'
+      - 'scripts/mw015-browser-smoke.mjs'
+      - '.github/workflows/mw015-ui-recovery.yml'
+permissions:
+  contents: read
+jobs:
+  real-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MW011_RELEASE: "mw015-ci"
+      MW011_HOST_PORT: "18585"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+      - name: Node syntax checks
+        run: |
+          node --check src/main.js
+          node --check scripts/mw015-browser-smoke.mjs
+          bash -n deploy/vps/mw011/web-only-mw015.sh
+      - name: Install
+        run: npm install --no-audit --no-fund --ignore-scripts --no-package-lock
+      - name: All game, animation and selection tests
+        run: npm test
+      - name: Build real production viewer
+        env:
+          SKIP_POLYHAVEN_ASSETS: "1"
+        run: npm run build -- --target es2022
+      - name: Start authoritative Docker world and UI
+        run: |
+          set -euo pipefail
+          stack=(docker compose -f deploy/vps/mw011/compose.yaml)
+          "${stack[@]}" build sim web
+          "${stack[@]}" up -d --no-build sim web
+          for attempt in $(seq 1 35); do
+            if curl -fsS --max-time 3 http://127.0.0.1:18585/healthz >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:18585/api/world -o /dev/null
+      - name: Chromium click navigation and NPC card smoke
+        run: timeout 125s node scripts/mw015-browser-smoke.mjs
+      - name: Tear down CI-only world
+        if: always()
+        run: |
+          docker compose -f deploy/vps/mw011/compose.yaml down || true
