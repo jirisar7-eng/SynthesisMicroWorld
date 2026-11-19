@@ -5,7 +5,13 @@ import {RECIPES} from './material-world.js';
  * No physics engine, teleportation, simulated 3D gravity or false "full physics" claims.
  */
 export const CITIZEN_RADIUS = .29;
-const WORLD_LIMIT = 37;
+// Two separated pieces of walkable dry land. Open sea is never a footpath.
+const onDryLand=point=>{
+  if(!Number.isFinite(point.x)||!Number.isFinite(point.z))return false;
+  if(point.x<55)return Math.hypot(point.x,point.z)<=41.7;
+  if(point.x>=59)return Math.hypot((point.x-86)*1.025,point.z)<=20.3;
+  return false;
+};
 const CELL = .85;
 const hypot=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const round=(v)=>Math.round(v/CELL);
@@ -101,8 +107,7 @@ export function collides(point,solid,radius=CITIZEN_RADIUS){
   return dx*dx+dz*dz < (solid.r+radius)**2-1e-9;
 }
 export function isBlocked(point,solids,radius=CITIZEN_RADIUS){
-  if(!Number.isFinite(point.x)||!Number.isFinite(point.z)||
-    Math.abs(point.x)>WORLD_LIMIT||Math.abs(point.z)>WORLD_LIMIT)return true;
+  if(!onDryLand(point))return true;
   const candidates=solids?.buckets?nearbySolids(point,solids):solids;
   return candidates.some(s=>collides(point,s,radius));
 }
@@ -192,7 +197,7 @@ function routeToGoal(start,goal,solids,radius,maxNodes){
     if(aKey===endKey){finished=a;break;}
     for(const [dx,dz] of neighbors){
       const ix=a.ix+dx,iz=a.iz+dz,p=loc(ix*CELL,iz*CELL);
-      if(Math.abs(p.x)>WORLD_LIMIT||Math.abs(p.z)>WORLD_LIMIT)continue;
+      if(!onDryLand(p))continue;
       const prev=loc(a.ix*CELL,a.iz*CELL);
       if(isBlocked(p,solids,radius)||!segmentClear(prev,p,solids,radius))continue;
       const g=a.g+Math.hypot(dx,dz),k=key(ix,iz);
