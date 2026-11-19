@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
+import {initializeLife, updateLife, remember, socialBond, needsDecision, relationshipLabel} from './life.js';
 
 const el = id => document.getElementById(id);
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
@@ -29,9 +30,10 @@ class Civilization {
   constructor(){
     this.seconds=0;this.day=1;this.wood=0;this.food=14;this.shelters=[];this.construction=null;
     this.nature=60;this.cooperation=80;this.messages=[];this.listeners=[];
+    this.weather={kind:'clear',until:0};this.lastMiracle=-100;this.meetings=new Map();this.meetingSeq=0;this.lastNightNotice=-1;
     this.trees=points(83,13,34,0).map((p,i)=>({...p,id:i,stock:9,maxStock:9}));
     this.berries=points(28,8,32).map((p,i)=>({...p,id:i,stock:10,maxStock:10}));
-    this.agents=names.map((name,i)=>({id:i,name,x:rand(-2.8,2.8),z:rand(-2.8,2.8),energy:75+rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,workRemaining:0,workTotal:0,choiceAt:0,speed:2+rand(0,0.55),color:colors[i]}));
+    this.agents=names.map((name,i)=>initializeLife({id:i,name,x:rand(-2.8,2.8),z:rand(-2.8,2.8),energy:75+rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,workRemaining:0,workTotal:0,choiceAt:0,speed:2+rand(0,0.55),color:colors[i]},i));
     this.nextMeal=75;this.lastScout=-999;this.addEvent('Nový začátek','Šest obyvatel dorazilo do neznámé krajiny.','✧');
     this.addEvent('První rozhodnutí','Obyvatelé sami zjišťují, co potřebují k přežití.','◈');
   }
@@ -40,17 +42,60 @@ class Civilization {
     this.listeners.forEach(f=>f(this.messages[0]));
   }
   setPolicies(nature,cooperation){this.nature=+nature;this.cooperation=+cooperation;}
+  // A god changes the environment, never takes over an NPC's decisions.
+  miracle(kind){
+    if(this.seconds-this.lastMiracle<12)return false;
+    this.lastMiracle=this.seconds;
+    if(kind==='rain'){
+      this.weather={kind:'rain',until:this.seconds+50};
+      for(const berry of this.berries)berry.stock=Math.min(berry.maxStock,berry.stock+2);
+      this.addEvent('Božský zásah: déšť','Na krajinu začalo pršet. Rostliny se lépe obnovují, lidé se rozhodují podle počasí.','☂');
+    }else if(kind==='bloom'){
+      for(const berry of this.berries)berry.stock=Math.min(berry.maxStock,berry.stock+6);
+      this.addEvent('Božský zásah: úroda','Krajina náhle rozkvetla a zvýšila se dostupnost plodů. Obyvatelé je stále musí sami sesbírat.','✿');
+    }else if(kind==='drought'){
+      this.weather={kind:'drought',until:this.seconds+50};
+      for(const berry of this.berries)berry.stock=Math.max(0,berry.stock-4);
+      this.addEvent('Božský zásah: sucho','Úroda zeslábla. Obyvatelé se budou muset přizpůsobit nedostatku zdrojů.','☀');
+    }else return false;
+    return true;
+  }
+  beginConversation(a,b){
+    const id=++this.meetingSeq;
+    const x=rand(-2.7,2.7),z=rand(-3,3);
+    this.meetings.set(id,{first:a.id,second:b.id,ready:new Set(),done:false});
+    a.conversation=id;b.conversation=id;
+    this.go(a,'meet',{x:x-.45,z},'Chce si popovídat s '+b.name+' a posílit vztahy.');
+    this.go(b,'meet',{x:x+.45,z},'Přijal pozvání od '+a.name+' ke společnému rozhovoru.');
+  }
+  seekConversation(a){
+    const candidates=this.agents.filter(b=>b.id!==a.id && b.mode==='idle' && b.socialNeed>=38 && b.energy>23 && b.hunger<72);
+    if(!candidates.length)return false;
+    const b=candidates.sort((x,y)=>(y.socialNeed+(a.relationships[y.id]||0)*.12)-(x.socialNeed+(a.relationships[x.id]||0)*.12))[0];
+    this.beginConversation(a,b);return true;
+  }
   go(a,purpose,target,reason,resource=null){
     a.mode='walk';a.purpose=purpose;a.target={x:target.x,z:target.z};a.reason=reason;a.resource=resource;
   }
   work(a,purpose,duration,reason){
-    a.mode='work';a.purpose=purpose;a.workRemaining=duration;a.workTotal=duration;a.reason=reason;
+    a.mode='work';a.purpose=purpose;
+    const skilled=['harvest','forage','building'].includes(purpose);
+    a.workRemaining=duration*(skilled?1.12-a.personality.persistence/500:1);
+    a.workTotal=a.workRemaining;a.reason=reason;
   }
   idle(a){a.mode='idle';a.purpose='';a.target=null;a.resource=null;a.choiceAt=this.seconds+rand(0.25,1.25);}
   closestAvailable(list,a){return list.filter(p=>p.stock>0).sort((p,q)=>dist(a,p)-dist(a,q))[0];}
   decide(a){
     if(this.seconds<a.choiceAt)return;
-    if(a.energy<21){this.go(a,'rest',{x:rand(-3,3),z:rand(-3,3)},'Je unavený a potřebuje odpočinek.');return;}
+    const need=needsDecision(a,this.food);
+    if(need==='eat'){
+      this.go(a,'eat',{x:rand(-2,2),z:rand(-2,2)},'Má hlad ('+Math.round(a.hunger)+' %) a jde se samostatně najíst.');return;
+    }
+    const dark=(this.seconds%75)/75>.72 || (this.seconds%75)/75<.11;
+    if(need==='rest'||(dark && a.energy<76)){
+      this.go(a,'rest',{x:rand(-3,3),z:rand(-3,3)},dark?'Je noc a chce se vyspat.':'Je unavený a potřebuje odpočinek.');return;
+    }
+    if(need==='social' && this.seekConversation(a))return;
     if(!this.construction && this.shelters.length<1 && this.wood>=12){
       this.wood-=12;this.construction={x:5.1,z:4.9,progress:0,agentId:a.id};
       this.addEvent('Vzniká první stavba',a.name+' se rozhodl postavit přístřešek. Osada má dost dřeva.','⌂');
@@ -59,6 +104,12 @@ class Civilization {
     if(this.construction && this.construction.agentId===a.id){
       this.go(a,'build',this.construction,'Chce dokončit rozestavěný přístřešek.');return;
     }
+    // Different personalities generate different priorities even under the same weather.
+    if(this.shelters.length && this.wood>=12 && this.food>=12 && a.personality.curiosity>75 &&
+      Math.random()<(a.personality.curiosity-60)/60){
+      this.go(a,'explore',{x:rand(-29,29),z:rand(-29,29)},
+        'Má zvídavou povahu a chce prozkoumat okolní krajinu.');return;
+    }
     const urgentFood=this.food<9+this.cooperation/20;
     const foragers=this.agents.filter(p=>p.id!==a.id && (p.purpose==='berries'||p.purpose==='returnfood')).length;
     const cooperativeSlots=Math.max(1,Math.round(this.cooperation/35));
@@ -66,7 +117,7 @@ class Civilization {
     const woods=this.trees.filter(t=>t.stock>0);
     const berry=this.closestAvailable(this.berries,a);
     const tree=this.closestAvailable(woods,a);
-    if(gatherFood && berry){
+    if((gatherFood || (a.hunger>=70 && this.food===0)) && berry){
       this.go(a,'berries',berry,urgentFood?'Zásoby potravy klesají. Rozhodl se hledat bobule.':'Zajišťuje zásoby potravy pro ostatní.',berry);return;
     }
     if(tree && (this.shelters.length===0 || (this.wood<5 && Math.random()*100>this.nature/2) || (this.nature<70 && (this.wood<25 || Math.random()*100>this.nature)))){
@@ -76,6 +127,22 @@ class Civilization {
     this.go(a,'explore',{x:rand(-27,27),z:rand(-27,27)},'Zkoumá krajinu a hledá další příležitosti.');
   }
   arrived(a){
+    if(a.purpose==='meet'){
+      const conversation=this.meetings.get(a.conversation);
+      if(!conversation){this.idle(a);return;}
+      a.mode='waiting';a.purpose='waiting';a.reason='Čeká na druhého obyvatele, aby spolu mohli mluvit.';
+      conversation.ready.add(a.id);
+      if(conversation.ready.size===2){
+        const first=this.agents[conversation.first],second=this.agents[conversation.second];
+        this.work(first,'talking',4.5,'Povídá si s '+second.name+' u ohniště.');
+        this.work(second,'talking',4.5,'Povídá si s '+first.name+' u ohniště.');
+        this.addEvent('Setkání obyvatel',first.name+' a '+second.name+' si spolu povídají.','♡');
+      }
+      return;
+    }
+    if(a.purpose==='eat'){
+      this.work(a,'eating',3,'Jí ze společných zásob a doplňuje síly.');return;
+    }
     if(a.purpose==='wood'){
       if(!a.resource || a.resource.stock<=0){this.idle(a);return;}
       this.work(a,'harvest',2.8+rand(0,1),'Sbírá dřevo z nalezeného stromu.');return;
@@ -99,17 +166,38 @@ class Civilization {
     if(a.purpose==='explore'){if(this.seconds-this.lastScout>15){this.addEvent('Průzkum okolí',a.name+' prozkoumal další kus krajiny.','⌕');this.lastScout=this.seconds;}this.idle(a);}
   }
   completed(a){
+    if(a.purpose==='eating'){
+      if(this.food>0){
+        this.food--;a.hunger=Math.max(0,a.hunger-76);a.mood=Math.min(100,a.mood+7);
+        a.lastMeal=this.seconds;remember(a,'Najedl se ze zásob osady');
+      }else{a.mood=Math.max(0,a.mood-8);remember(a,'Nenašel jídlo, když měl hlad');}
+      this.idle(a);return;
+    }
+    if(a.purpose==='talking'){
+      const meeting=this.meetings.get(a.conversation);
+      if(meeting && !meeting.done){
+        meeting.done=true;
+        const first=this.agents[meeting.first],second=this.agents[meeting.second];
+        socialBond(first,second);
+        this.addEvent('Nové přátelství',first.name+' a '+second.name+' si popovídali a posílili svůj vztah.','♡');
+        this.meetings.delete(a.conversation);
+      }
+      a.conversation=null;this.idle(a);return;
+    }
     if(a.purpose==='harvest'){
       const amount=Math.min(a.resource?.stock||0,3);if(a.resource)a.resource.stock-=amount;
-      a.carry=amount;this.go(a,'returnwood',{x:0,z:0},'Nese '+amount+' jednotky dřeva do společných zásob.');return;
+      a.carry=amount;remember(a,'Nasbíral dřevo pro osadu');
+      this.go(a,'returnwood',{x:0,z:0},'Nese '+amount+' jednotky dřeva do společných zásob.');return;
     }
     if(a.purpose==='forage'){
       const amount=Math.min(a.resource?.stock||0,4);if(a.resource)a.resource.stock-=amount;
-      a.carry=amount;this.go(a,'returnfood',{x:0,z:0},'Nese nasbírané jídlo do společných zásob.');return;
+      a.carry=amount;remember(a,'Nasbíral potravu pro ostatní');
+      this.go(a,'returnfood',{x:0,z:0},'Nese nasbírané jídlo do společných zásob.');return;
     }
     if(a.purpose==='building' && this.construction){
       this.shelters.push({x:this.construction.x,z:this.construction.z});
-      this.construction=null;this.addEvent('První přístřešek je hotový',a.name+' dokončil první stavbu bez jakéhokoli příkazu hráče.','⌂');
+      this.construction=null;remember(a,'Dokončil první přístřešek');
+      this.addEvent('První přístřešek je hotový',a.name+' dokončil první stavbu bez jakéhokoli příkazu hráče.','⌂');
       this.idle(a);return;
     }
     if(a.purpose==='resting'){a.energy=Math.min(100,a.energy+68);this.idle(a);return;}
@@ -117,12 +205,22 @@ class Civilization {
   }
   update(dt){
     this.seconds+=dt;this.day=Math.floor(this.seconds/75)+1;
-    if(this.seconds>=this.nextMeal){
-      this.nextMeal+=75;this.food=Math.max(0,this.food-6);
-      this.addEvent('Nový den','Obyvatelé spotřebovali 6 jednotek potravy.','☼');
-      for(const b of this.berries)b.stock=Math.min(b.maxStock,b.stock+3);
+    if(this.weather.kind!=='clear' && this.seconds>=this.weather.until){
+      this.weather={kind:'clear',until:0};
+      this.addEvent('Počasí se uklidnilo','Krajina se vrací k běžným podmínkám.','☼');
+    }
+    while(this.seconds>=this.nextMeal){
+      this.nextMeal+=75;
+      const recovery=this.weather.kind==='rain'?6:this.weather.kind==='drought'?1:3;
+      for(const b of this.berries)b.stock=Math.min(b.maxStock,b.stock+recovery);
+      this.addEvent('Nový den','Začal další den. Jídlo už nespotřebovává osada hromadně: každý NPC jí podle vlastního hladu.','☼');
+    }
+    const night=(this.seconds%75)/75>.73;
+    if(night && this.lastNightNotice!==this.day){
+      this.lastNightNotice=this.day;this.addEvent('Přichází večer','Obyvatelé se postupně rozhodují, zda dokončit práci, setkat se, nebo jít odpočívat.','☾');
     }
     for(const a of this.agents){
+      updateLife(a,dt,this.weather.kind);
       if(a.mode==='idle'){this.decide(a);continue;}
       if(a.mode==='walk' && a.target){
         const d=dist(a,a.target),step=a.speed*dt;
@@ -131,7 +229,9 @@ class Civilization {
         a.energy=clamp(a.energy-dt*.16,0,100);
       }
       else if(a.mode==='work'){
-        a.workRemaining-=dt;a.energy=clamp(a.energy-dt*.55,0,100);
+        const wetWork=this.weather.kind==='rain' && ['harvest','forage','building'].includes(a.purpose);
+        a.workRemaining-=dt*(wetWork?.78:1);
+        a.energy=clamp(a.energy-dt*.55,0,100);
         if(a.purpose==='building' && this.construction)this.construction.progress=clamp(1-a.workRemaining/a.workTotal,0,1);
         if(a.workRemaining<=0)this.completed(a);
       }
@@ -146,7 +246,8 @@ class Diorama {
     container.appendChild(this.renderer.domElement);
     this.camera=new THREE.PerspectiveCamera(47,1,.1,250);this.resetCamera();
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);this.controls.enableDamping=true;this.controls.dampingFactor=.07;this.controls.minDistance=13;this.controls.maxDistance=90;this.controls.maxPolarAngle=Math.PI*.46;this.controls.minPolarAngle=.22;this.controls.target.set(0,1.5,0);this.controls.enablePan=true;this.controls.screenSpacePanning=true;this.controls.maxTargetRadius=32;
-    this.scene.add(new THREE.HemisphereLight('#edffff','#768b68',2.4));
+    this.ambient=new THREE.HemisphereLight('#edffff','#768b68',2.4);this.scene.add(this.ambient);
+    this.clearSky=new THREE.Color('#c8dfdd');this.nightSky=new THREE.Color('#627c84');this.rainSky=new THREE.Color('#869a9b');
     const sun=new THREE.DirectionalLight('#ffeed6',3.5);sun.position.set(-20,43,24);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-49;sun.shadow.camera.right=49;sun.shadow.camera.top=49;sun.shadow.camera.bottom=-49;sun.shadow.camera.near=1;sun.shadow.camera.far=110;sun.shadow.bias=-.00022;this.scene.add(sun);this.sun=sun;
     const groundGeo=new THREE.PlaneGeometry(100,100,100,100);groundGeo.rotateX(-Math.PI/2);
     const pos=groundGeo.attributes.position,vertices=[];
@@ -157,7 +258,7 @@ class Diorama {
     }groundGeo.setAttribute('color',new THREE.Float32BufferAttribute(vertices,3));groundGeo.computeVertexNormals();
     const land=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide}));land.receiveShadow=true;this.scene.add(land);
     const water=new THREE.Mesh(new THREE.PlaneGeometry(190,190),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
-    this.addCamp();this.treeModels=[];this.addForest();this.addBerries();this.addRocksAndGrass();this.people=[];this.pickables=[];
+    this.addCamp();this.treeModels=[];this.addForest();this.addBerries();this.addRocksAndGrass();this.addRain();this.people=[];this.pickables=[];
     for(const agent of sim.agents){const group=this.makePerson(agent);this.scene.add(group);this.people.push(group);}
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
@@ -165,6 +266,18 @@ class Diorama {
     canvas.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
     canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];if(hit){chooseAgent(hit.object.userData.agentId);}});
     this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(container);this.resize();
+  }
+  addRain(){
+    const count=280,coords=new Float32Array(count*6);this.rainCoords=coords;
+    this.rainGeometry=new THREE.BufferGeometry();
+    this.rainGeometry.setAttribute('position',new THREE.BufferAttribute(coords,3));
+    for(let i=0;i<count;i++){
+      const x=rand(-25,25),z=rand(-25,25),y=rand(1,18),idx=i*6;
+      coords[idx]=x;coords[idx+1]=y;coords[idx+2]=z;
+      coords[idx+3]=x-.17;coords[idx+4]=y-.64;coords[idx+5]=z;
+    }
+    this.rain=new THREE.LineSegments(this.rainGeometry,new THREE.LineBasicMaterial({color:'#d8eff0',transparent:true,opacity:.53,depthWrite:false}));
+    this.rain.frustumCulled=false;this.rain.visible=false;this.scene.add(this.rain);
   }
   mat(color,roughness=1){return new THREE.MeshStandardMaterial({color,roughness});}
   mesh(geometry,material,x,y,z,cast=true){const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;return m;}
@@ -319,11 +432,24 @@ class Diorama {
   }
   makePerson(a){
     const g=new THREE.Group(),skin=this.mat('#e9c49f'),shirt=this.mat(a.color),pants=this.mat('#445d53'),hair=this.mat(a.id%2?'#584239':'#88664d');
-    g.add(this.mesh(new THREE.CylinderGeometry(.32,.39,.77,8),shirt,0,.95,0));
-    g.add(this.mesh(new THREE.SphereGeometry(.32,10,8),skin,0,1.61,0));
+    g.userData.legs=[];g.userData.arms=[];
+    const torso=this.mesh(new THREE.CylinderGeometry(.32,.39,.77,10),shirt,0,.95,0);g.add(torso);
+    const head=this.mesh(new THREE.SphereGeometry(.32,12,10),skin,0,1.61,0);g.add(head);
     const cap=this.mesh(new THREE.SphereGeometry(.32,10,8),hair,0,1.78,-.025);cap.scale.set(1,.48,1);g.add(cap);
-    for(const sign of [-1,1]){g.add(this.mesh(new THREE.CylinderGeometry(.12,.13,.5,7),pants,sign*.19,.38,0));g.add(this.mesh(new THREE.CylinderGeometry(.11,.11,.57,7),shirt,sign*.44,1.03,0));}
-    const halo=this.mesh(new THREE.RingGeometry(.55,.67,28),new THREE.MeshBasicMaterial({color:'#e8ffd1',side:THREE.DoubleSide,transparent:true,opacity:.85}),0,.11,0,false);halo.rotation.x=-Math.PI/2;halo.visible=false;g.add(halo);g.userData.halo=halo;
+    g.userData.head=head;g.userData.hair=cap;g.userData.torso=torso;
+    for(const sign of [-1,1]){
+      const leg=this.mesh(new THREE.CylinderGeometry(.12,.13,.5,7),pants,sign*.19,.38,0);
+      const arm=this.mesh(new THREE.CylinderGeometry(.11,.11,.57,7),shirt,sign*.44,1.03,0);
+      g.add(leg,arm);g.userData.legs.push(leg);g.userData.arms.push(arm);
+    }
+    const halo=this.mesh(new THREE.RingGeometry(.55,.67,28),new THREE.MeshBasicMaterial({color:'#e8ffd1',side:THREE.DoubleSide,transparent:true,opacity:.85}),0,.11,0,false);
+    halo.rotation.x=-Math.PI/2;halo.visible=false;g.add(halo);g.userData.halo=halo;
+    const bubbleCanvas=document.createElement('canvas');bubbleCanvas.width=128;bubbleCanvas.height=64;
+    const ctx=bubbleCanvas.getContext('2d');
+    ctx.fillStyle='rgba(28,58,46,.87)';ctx.beginPath();ctx.roundRect(6,8,116,44,18);ctx.fill();
+    ctx.fillStyle='#f1ffe5';ctx.font='bold 36px sans-serif';ctx.textAlign='center';ctx.fillText('···',64,38);
+    const bubble=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(bubbleCanvas),transparent:true,depthWrite:false}));
+    bubble.position.set(0,2.7,0);bubble.scale.set(1.65,.82,1);bubble.visible=false;g.add(bubble);g.userData.bubble=bubble;
     for(const m of g.children)if(m.isMesh){m.userData.agentId=a.id;this.pickables.push(m);}
     g.position.set(a.x,terrainHeight(a.x,a.z)+.1,a.z);return g;
   }
@@ -340,7 +466,28 @@ class Diorama {
   }
   update(time){
     this.timer+=time;
-    this.fire.scale.y=.8+Math.sin(this.timer*9)*.2;this.campLight.intensity=2+Math.sin(this.timer*7)*.3;
+    const phase=(this.sim.seconds%75)/75;
+    const daylight=phase<.12?(.42+.58*phase/.12):phase<.67?1:phase<.89?(1-.58*(phase-.67)/.22):.42;
+    const raining=this.sim.weather.kind==='rain';
+    const dry=this.sim.weather.kind==='drought';
+    const lightFactor=daylight*(raining?.65:dry?1.15:1);
+    this.sun.intensity=3.5*lightFactor;
+    this.ambient.intensity=1.0+1.35*lightFactor;
+    this.sun.position.set(Math.cos(phase*Math.PI*2)*35,13+daylight*35,Math.sin(phase*Math.PI*2)*35);
+    this.renderer.toneMappingExposure=.97+daylight*.46;
+    this.scene.background.copy(this.nightSky).lerp(raining?this.rainSky:this.clearSky,clamp(lightFactor,0,1));
+    this.scene.fog.color.copy(this.scene.background);
+    this.rain.visible=raining;
+    if(raining){
+      const attr=this.rainGeometry.attributes.position,coords=this.rainCoords;
+      for(let i=0;i<coords.length;i+=6){
+        let y=coords[i+1]-time*19;
+        if(y<terrainHeight(coords[i],coords[i+2])+.3)y=17+Math.random()*4;
+        coords[i+1]=y;coords[i+4]=y-.64;
+      }
+      attr.needsUpdate=true;
+    }
+    this.fire.scale.y=.8+Math.sin(this.timer*9)*.2;this.campLight.intensity=1.4+(1-daylight)*3+Math.sin(this.timer*7)*.3;
     this.water.position.y=-.58+Math.sin(this.timer*.45)*.015;
     for(const b of this.butterflies){
       const t=this.timer+b.phase;
@@ -352,6 +499,16 @@ class Diorama {
     this.sim.agents.forEach((a,i)=>{
       const g=this.people[i];g.position.set(a.x,terrainHeight(a.x,a.z)+.04+(a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),a.z);
       if(a.mode==='walk' && a.target){const dx=a.target.x-a.x,dz=a.target.z-a.z;if(Math.hypot(dx,dz)>.2)g.rotation.y=Math.atan2(dx,dz);}
+      const walking=a.mode==='walk',working=a.mode==='work';
+      const stride=walking?Math.sin(this.timer*8+i*1.3)*.47:0;
+      for(let j=0;j<2;j++){
+        g.userData.legs[j].rotation.x=(j===0?1:-1)*stride;
+        g.userData.arms[j].rotation.x=walking?(j===0?-1:1)*stride*.7:working?Math.sin(this.timer*5+i+j*1.8)*.24:0;
+      }
+      g.userData.torso.rotation.z=walking?Math.sin(this.timer*8+i)*.035:a.purpose==='resting'?.10:0;
+      g.userData.head.rotation.y=a.purpose==='talking'?Math.sin(this.timer*2+i)*.25:Math.sin(this.timer*.8+i)*.07;
+      g.userData.hair.rotation.y=g.userData.head.rotation.y;
+      g.userData.bubble.visible=a.purpose==='talking';
       g.userData.halo.visible=i===selectedAgent;
     });
     for(const tree of this.treeModels)if(tree.resource.stock<=0 && tree.model.scale.y>.32)tree.model.scale.y=.32;
@@ -417,13 +574,44 @@ function renderUI(){
   const a=sim.agents[selectedAgent];el('npc-avatar').textContent=a.name.charAt(0);el('npc-avatar').style.background='#'+new THREE.Color(a.color).getHexString();
   el('npc-name').textContent=a.name;
   el('map-npc-name').textContent=a.name;
-  const actions={wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu'};
+  const actions={wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
   el('npc-role').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';el('npc-reason').textContent=a.reason;
   el('agent-state').textContent='ENERGIE '+Math.round(a.energy)+' %';
   el('map-npc-action').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';
   el('map-npc-reason').textContent=a.reason;
+  el('npc-personality').textContent=a.personality.name;
+  const stats=[['hunger',a.hunger],['social',a.socialNeed],['energy',a.energy],['mood',a.mood]];
+  for(const [name,value] of stats){
+    el('npc-'+name).textContent=Math.round(value)+' %';
+    el('need-'+name).style.width=clamp(value,0,100)+'%';
+  }
+  el('npc-memory').textContent=a.memories[a.memories.length-1]||'Zatím žádné vzpomínky';
+  const friends=sim.agents.filter(b=>b.id!==a.id && (a.relationships[b.id]??0)>0)
+    .sort((x,y)=>(a.relationships[y.id]??0)-(a.relationships[x.id]??0));
+  el('npc-friend').textContent=friends.length?friends[0].name+' · '+relationshipLabel(a.relationships[friends[0].id]):'Zatím se s nikým nespřátelil';
+  const conditions=sim.weather.kind==='rain'?'☂ Déšť':sim.weather.kind==='drought'?'☀ Sucho':'☀ Jasno';
+  el('map-weather').textContent=conditions;
+  el('world-weather').textContent=conditions;
+  const remaining=Math.max(0,12-(sim.seconds-sim.lastMiracle));
+  for(const button of document.querySelectorAll('[data-god]')){
+    button.disabled=remaining>.01;
+    button.title=remaining>0?'Další zásah za '+Math.ceil(remaining)+' herních sekund':'Změnit podmínky světa';
+  }
+  el('god-cooldown').textContent=remaining>0?
+    'Další zásah za '+Math.ceil(remaining)+' herních sekund · lidé stále rozhodují sami':
+    'Můžeš změnit podmínky světa. Každý zásah se zapíše do historie.';
 }
 el('btn-next-npc').addEventListener('click',()=>chooseAgent((selectedAgent+1)%sim.agents.length));
+for(const button of document.querySelectorAll('[data-god]')){
+  button.addEventListener('click',()=>{
+    const kind=button.dataset.god;
+    if(sim.miracle(kind)){
+      const label=kind==='rain'?'Déšť zasáhl krajinu.':kind==='drought'?'Krajinu zasáhlo sucho.':'Úroda v krajině zesílila.';
+      announce(label+' Sleduj, jak se obyvatelé zachovají.');
+      renderUI();
+    }else announce('Božská moc se ještě obnovuje.');
+  });
+}
 el('btn-pause').addEventListener('click',()=>{paused=!paused;el('btn-pause').textContent=paused?'▶':'Ⅱ';el('btn-pause').title=paused?'Pokračovat':'Pozastavit';});
 const speeds=[1,2,4];let speedIndex=0,paused=false;
 el('btn-speed').addEventListener('click',()=>{speedIndex=(speedIndex+1)%3;el('btn-speed').textContent=speeds[speedIndex]+'×';});
