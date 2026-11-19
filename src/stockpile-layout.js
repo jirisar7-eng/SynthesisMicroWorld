@@ -162,6 +162,7 @@ function inTransit(c,item,index){
 /** One logical slot stream for mixed fruit in one crate/basket or items carried together. */
 export function stockSlotGroup(item,container){
   if(['carry','basket','crate','tentStorage','drop'].includes(container?.kind))return 'all';
+  if(container?.kind==='yard'&&container.storageFamily==='food')return 'all';
   if(container?.kind==='shelves'&&['berry','apple','grain','seed'].includes(item.type))return 'food';
   return item.type;
 }
