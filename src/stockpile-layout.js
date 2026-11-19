@@ -34,9 +34,9 @@ const stackCenter=(pile,spacing=3)=>{
 /** Flat overflow parcels outside a full crate, basket or seed tray.
  * Each parcel consists of at most 16 ground-level units in a small 4x4 pad.
  * No invisible items, no limitless tower. */
-function overflowGround(c,index,type,spacing=1.75){
+function overflowGround(c,index,type,spacing=1.75,skipOrigin=true){
   const parcel=Math.floor(index/16),local=index%16;
-  const center=stackCenter(parcel+1,spacing);
+  const center=stackCenter(parcel+(skipOrigin?1:0),spacing);
   const col=local%4,row=Math.floor(local/4);
   const radius=type==='apple'?.162:type==='stone'?.125:
     type==='wood'?.14:type==='twig'?.045:type==='grain'?.20:
@@ -47,6 +47,9 @@ function overflowGround(c,index,type,spacing=1.75){
     radius,hash(index*13)*TWO_PI,
     .96+jitter(index*17,.06),jitter(index*19,.04));
 }
+
+/** Stable yard placement shared by actual material logistics and the renderer. */
+export const stockyardOffset=(index,spacing=3)=>stackCenter(index,spacing);
 
 /** Individual crossed log courses. One local pile holds up to 36 logs. */
 function logs(c,index,type){
@@ -177,6 +180,14 @@ export function layoutStockItem(item,container,index){
   if(container.kind==='tentStorage')return crate(container,n,item.type);
   if(container.kind==='drop')return loose({...container,x:container.x,z:container.z},n,item.type);
   if(container.kind==='tray')return fieldTray(container,n);
+  // Actual overflow storage patches keep goods low and spread on the ground.
+  // Items remain individually identified and counted by MaterialWorld.
+  if(container.kind==='yard'){
+    if(item.type==='wood')return logs(container,n,item.type);
+    if(item.type==='stone')return stones(container,n);
+    if(item.type==='twig')return twigs(container,n);
+    return overflowGround(container,n,item.type,1.75,false);
+  }
   if(item.type==='wood')return logs(container,n,item.type);
   if(item.type==='twig')return twigs(container,n);
   if(item.type==='stone')return stones(container,n);
