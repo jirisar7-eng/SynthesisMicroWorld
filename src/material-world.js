@@ -13,7 +13,8 @@ export const ITEM_INFO = Object.freeze({
   berry: {name:'Bobule', icon:'🫐'},
   apple: {name:'Jablko', icon:'🍎'},
   seed: {name:'Semínko divokých bobulí', icon:'🌱'},
-  grain: {name:'Obilí', icon:'🌾'}
+  grain: {name:'Obilí', icon:'🌾'},
+  water: {name:'Pitná voda v lahvi', icon:'◈'}
 });
 export const FOOD_TYPES = ['berry','apple','grain'];
 export const RECIPES = Object.freeze({
@@ -351,6 +352,15 @@ export class MaterialWorld {
       if(goods.length)return {source,destination:dest,ids:goods.map(x=>x.id)};
     }
     return null;
+  }
+  /** Consume an existing individually identified resource being carried.
+   * Used for caregiver deliveries, with no phantom creation of goods.
+   */
+  consumeCarried(agent,type){
+    const item=this.cargo(agent).find(i=>i.type===type);
+    if(!item)return null;
+    this.items=this.items.filter(i=>i.id!==item.id);
+    return item;
   }
   pickupStorage(agent,ids){
     const bag=this.cargoContainer(agent);
