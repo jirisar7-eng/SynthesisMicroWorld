@@ -29,9 +29,7 @@ jobs:
         run: |
           node --check src/main.js
           node --check scripts/mw015-browser-smoke.mjs
-          if test -f deploy/vps/mw011/web-only-mw015.sh; then
-            bash -n deploy/vps/mw011/web-only-mw015.sh
-          fi
+          bash -n deploy/vps/mw011/web-only-mw015.sh
       - name: Install
         run: npm install --no-audit --no-fund --ignore-scripts --no-package-lock
       - name: All game, animation and selection tests
