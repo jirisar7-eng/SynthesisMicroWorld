@@ -36,7 +36,7 @@ test('vessel is built using five existing wood IDs physically transported to coa
   const initial=sim.material.count('wood');
   sim.material.add('wood',5,'woodpile');
   a.vesselPlan={type:'raft',woodIds:[],stoneIds:[]};
-  a.purpose='collectVesselWood';a.x=-3.7;a.z=2.1;
+  a.purpose='collectVesselWood';a.x=-1.8;a.z=2.1; // reachable edge of woodpile
   assert.equal(coastalArrival(sim,a),true);
   assert.equal(a.vesselPlan.woodIds.length,5);
   assert.equal(sim.material.cargo(a).filter(i=>i.type==='wood').length,5);
