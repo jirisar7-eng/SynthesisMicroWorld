@@ -38,8 +38,14 @@ test('MW-STOCK-003: fruit is contained within real basket/crate edges and stacks
   assert.ok(fruit.every(p=>Math.hypot(p.x-basket.x,p.z-basket.z)<.42));
   assert.ok(fruit[7].height>fruit[0].height);
   const boxFruit=Array.from({length:24},(_,i)=>layoutStockItem(apple,crate,i));
-  assert.ok(boxFruit.every(p=>Math.abs(p.x-crate.x)<.6&&Math.abs(p.z-crate.z)<.45));
-  assert.ok(boxFruit[12].height>boxFruit[0].height);
+  assert.ok(boxFruit.slice(0,16).every(p=>Math.abs(p.x-crate.x)<.6&&Math.abs(p.z-crate.z)<.5));
+  assert.ok(boxFruit.slice(0,16).every(p=>p.height>.39&&p.height<.42));
+  // Overflow must settle beside the box ON THE GROUND, never tower above its rim.
+  assert.ok(boxFruit.slice(16).every(p=>Math.hypot(p.x-crate.x,p.z-crate.z)>.95));
+  assert.ok(boxFruit.slice(16).every(p=>p.height>=.15&&p.height<=.17));
+  const drop=container('drop');
+  const dropped=layoutStockItem(apple,drop,0);
+  assert.ok(dropped.height>=.15&&dropped.height<=.17);
 });
 
 test('MW-STOCK-004: hand-carried items have distinct slots near their owner',()=>{
