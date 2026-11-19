@@ -43,6 +43,15 @@ test('MW-INTEGRATION-001: six autonomous citizens run for several days with phys
     sim.update(.2);
   }
   const movement=sim.paths.summary();
+  console.log('MW006B_LIVE_METRICS',JSON.stringify({
+    day:sim.day,buildings:sim.material.structures.length,
+    activeProject:sim.construction?.type||null,
+    constructionDelivered:sim.material.logistics.constructionDeliveries,
+    materialPicked:sim.material.logistics.collected,
+    materialDelivered:sim.material.logistics.delivered,
+    trails:movement.trails,footprints:movement.footprints,
+    camps:sim.material.tents.length,worldEvents:sim.messages.length
+  }));
   assert.ok(sim.day>=8,'Several game days must pass');
   assert.ok(movement.footprints>10,'Citizens must actually walk');
   assert.ok(movement.trails>2,'Traffic must leave visible worn ground');
