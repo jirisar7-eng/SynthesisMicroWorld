@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {describeSceneFailure} from './scene-diagnostics.js';
+import {interpolateRemotePose,remoteSnapshotMovement,REMOTE_SNAPSHOT_INTERVAL_SECONDS} from './remote-motion.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
 import {MaterialWorld, RECIPES, FOOD_TYPES, ITEM_INFO} from './material-world.js';
@@ -35,6 +36,8 @@ class Diorama {
     // MUST be passed explicitly, never read as a nonexistent global.
     this.getSelectedAgent=selection.getSelectedAgent||(()=>0);
     this.chooseAgent=selection.chooseAgent||(()=>{});
+    this.remoteMotion=null;
+    this.remoteMotionAge=REMOTE_SNAPSHOT_INTERVAL_SECONDS;
     Diorama.lastStage='webgl';
     this.sim=sim;this.container=container;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#c8dfdd');this.scene.fog=new THREE.Fog('#c8dfdd',65,205);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
@@ -433,8 +436,25 @@ class Diorama {
     const chimney=this.mesh(new THREE.BoxGeometry(.47,1.25,.5),this.mat('#a07d65'),1.05,3.31,-.35);chimney.visible=progress>.8;g.add(chimney);
     this.scene.add(g);return{group:g,walls,roof,door,chimney};
   }
+  /** Animate only positions proven by consecutive server snapshots. This
+   * creates no AI decisions or intermediate authoritative world state. */
+  queueServerMotion(previous){
+    const transitions=new Map();
+    for(const agent of this.sim.agents){
+      if(!isLiving(agent))continue;
+      const past=previous.get(agent.id);
+      if(!past)continue;
+      const model=this.people[agent.id];
+      const from=model&&model.visible?
+        {x:model.position.x,z:model.position.z}:past;
+      transitions.set(agent.id,{from,to:{x:agent.x,z:agent.z}});
+    }
+    this.remoteMotion=transitions;
+    this.remoteMotionAge=0;
+  }
   update(time){
     this.timer+=time;
+    this.remoteMotionAge+=time;
     const phase=(this.sim.seconds%75)/75;
     const daylight=phase<.12?(.42+.58*phase/.12):phase<.67?1:phase<.89?(1-.58*(phase-.67)/.22):.42;
     const raining=this.sim.weather.kind==='rain';
@@ -480,8 +500,13 @@ class Diorama {
       const g=this.people[i];g.visible=isLiving(a);
       g.scale.setScalar(isDependent(a)?.62:1);
       if(!isLiving(a))return;
-      g.position.set(a.x,(a.mode==='voyage'?this.water.position.y+.32:terrainHeight(a.x,a.z)+.04)+
-        (a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),a.z);
+      const transition=this.remoteMotion?.get(a.id);
+      const pose=transition?
+        interpolateRemotePose(transition.from,transition.to,
+          this.remoteMotionAge/REMOTE_SNAPSHOT_INTERVAL_SECONDS):a;
+      g.position.set(pose.x,
+        (a.mode==='voyage'?this.water.position.y+.32:terrainHeight(pose.x,pose.z)+.04)+
+        (a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),pose.z);
       if(a.mode==='walk' && a.target){const target=a.waypoints?.[0]||a.target;
         const dx=target.x-a.x,dz=target.z-a.z;
         if(Math.hypot(dx,dz)>.08)g.rotation.y=Math.atan2(dx,dz);}
@@ -592,6 +617,7 @@ if(thirtyScenario){
 }
 let world;
 let remoteWorldMode=false,remoteWorldError=null;
+let serverMovement={moved:0,checked:0},consecutiveStillSamples=0;
 let initialSaveStatus=thirtyScenario?'Scénář 30 obyvatel':'Nový svět';
 try{
   const rawSave=window.localStorage.getItem(activeSaveKey);
@@ -611,8 +637,21 @@ async function refreshServerWorld(){
   if(!response.ok)throw new Error('Server HTTP '+response.status);
   const snapshot=await response.text();
   const oldSeconds=remoteWorldMode?sim.seconds:-1;
+  // Reject out-of-order responses BEFORE touching the visible world mirror.
+  const remoteSeconds=JSON.parse(snapshot)?.state?.seconds;
+  if(oldSeconds>=0&&(!Number.isFinite(remoteSeconds)||remoteSeconds<oldSeconds))
+    throw new Error('World clock went backwards');
+  const previous=remoteWorldMode?
+    sim.agents.map(a=>({id:a.id,x:a.x,z:a.z,alive:a.alive})):null;
   const state=hydrateWorldMirror(sim,snapshot);
-  if(oldSeconds>=0&&state.seconds<oldSeconds)throw new Error('World clock went backwards');
+  if(previous&&world){
+    serverMovement=remoteSnapshotMovement(previous,sim.agents);
+    consecutiveStillSamples=serverMovement.checked&&serverMovement.moved===0?
+      consecutiveStillSamples+1:0;
+    if(document.body.classList.contains('page-map'))
+      world.queueServerMotion(new Map(previous.map(a=>[a.id,a])));
+    else world.remoteMotion=null;
+  }
   remoteWorldMode=true;remoteWorldError=null;
   if(el('save-status'))el('save-status').textContent='Automatické ukládání na VPS · den '+state.day;
   return state;
@@ -671,6 +710,10 @@ function showPage(page,push=false){
     else link.removeAttribute('aria-current');
   }
   if(page==='map')requestAnimationFrame(()=>world?.resize());
+  else requestAnimationFrame(()=>{
+    try{renderUI();}
+    catch(error){showUIFailure(error,'switch-page');}
+  });
 }
 for(const link of document.querySelectorAll('[data-page]')){
   link.addEventListener('click',event=>{
@@ -702,7 +745,14 @@ function events(){
   }
 }
 sim.listeners.push(m=>{events();if(m.title.includes('stavba')||m.title.includes('přístřešek'))announce(m.detail);});
-function chooseAgent(index){selectedAgent=index;renderUI();}
+function chooseAgent(id){
+  const index=sim.agents.findIndex(a=>a.id===Number(id));
+  if(index<0)return false;
+  selectedAgent=index;
+  try{renderUI();}
+  catch(error){showUIFailure(error,'select-npc');}
+  return true;
+}
 function drawPersonalKnowledgeMap(knowledge, person){
   const canvas=el('knowledge-map');
   if(!canvas || !document.body.classList.contains('page-overview'))return;
@@ -906,7 +956,10 @@ function renderUI(){
     done?sim.material.structures.length+' objektů':Math.min(sim.wood,12)+' / 12';
   el('build-progress').style.width=(building?sim.construction.progress*100:done?100:
     Math.min(sim.wood/12,1)*100)+'%';
-  const a=sim.agents[selectedAgent];el('npc-avatar').textContent=a.name.charAt(0);el('npc-avatar').style.background='#'+new THREE.Color(a.color).getHexString();
+  const a=sim.agents[selectedAgent]||sim.agents.find(isLiving)||sim.agents[0];
+  if(!a)return;
+  selectedAgent=sim.agents.indexOf(a);
+  el('npc-avatar').textContent=a.name.charAt(0);el('npc-avatar').style.background='#'+new THREE.Color(a.color).getHexString();
   el('npc-name').textContent=a.name;
   el('map-npc-name').textContent=a.name;
   const actions={departWood:'Bere dřevo na cestu',departFood:'Vybírá vlastní jídlo',departCamp:'Odchází do samoty',campWander:'Žije v táboře',campLiving:'Odpočívá mimo osadu',tentEat:'Jí ve stanu',returnHome:'Vrací se domů',wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',stone:'Cestuje ke kameni',mining:'Těží kámen',apples:'Cestuje pro jablka',applepicking:'Sbírá jablka',returnstone:'Nese kámen',weave:'Jde uplést košík',weaving:'Plete košík',plant:'Jde sázet',planting:'Vysévá semena',reap:'Jde sklízet',reaping:'Sklízí úrodu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
