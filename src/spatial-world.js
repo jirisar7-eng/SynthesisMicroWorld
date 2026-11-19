@@ -124,7 +124,9 @@ function nearbyWalkableGrid(point,solids,radius){
   for(let ring=0;ring<=6;ring++)for(let x=ix-ring;x<=ix+ring;x++)for(let z=iz-ring;z<=iz+ring;z++){
     if(ring&&Math.max(Math.abs(x-ix),Math.abs(z-iz))!==ring)continue;
     const p=loc(x*CELL,z*CELL),d=hypot(point,p);
-    if(d<cost&&!isBlocked(p,solids,radius)){best={...p,ix:x,iz:z};cost=d;}
+    if(d<cost&&!isBlocked(p,solids,radius)&&segmentClear(point,p,solids,radius)){
+      best={...p,ix:x,iz:z};cost=d;
+    }
   }
   return best;
 }
@@ -212,4 +214,18 @@ export function footprintOverlaps(x,z,hx,hz,solid,clearance=0){
   }
   const dx=Math.max(Math.abs(x-solid.x)-hx,0),dz=Math.max(Math.abs(z-solid.z)-hz,0);
   return dx*dx+dz*dz<(solid.r+clearance)**2;
+}
+
+/** Place dropped material beside its owner, on genuinely empty ground.
+ * Never turn the owner's standing location into a blocking heap.
+ */
+export function groundDropPosition(owner,solids){
+  for(const r of [1.05,1.35,1.75,2.2]){
+    for(let i=0;i<24;i++){
+      const angle=i*Math.PI/12;
+      const p=loc(owner.x+r*Math.cos(angle),owner.z+r*Math.sin(angle));
+      if(!isBlocked(p,solids,.59)&&segmentClear(owner,p,solids,.25))return p;
+    }
+  }
+  return null;
 }
