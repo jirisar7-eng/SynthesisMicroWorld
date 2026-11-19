@@ -17,6 +17,7 @@ services:
       MW_WORLD_SAVE_PATH: "/app/state/world.json"
       MW_START_POPULATION: "30"
       MW_SIM_SPEED: "1"
+      MW_GOD_ADMIN_TOKEN: "${MW_GOD_ADMIN_TOKEN:-}"
     volumes:
       - world-state:/app/state
     networks:

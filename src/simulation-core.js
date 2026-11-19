@@ -18,6 +18,7 @@ import {initializeLife,updateLife,remember,socialBond,needsDecision,relationship
 import {initializeIslands,islandOf,forbidsWalkingAcrossSea,considerCoast,considerFarIsland,
   coastalArrival,coastalComplete,advanceVoyage,advancePredators} from './island-life.js';
 import {mentorAtMeeting,updateProfessions} from './professions.js';
+import {advanceGodHazards} from './god-powers.js';
 
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
 const dist = (a,b) => Math.hypot(a.x-b.x,a.z-b.z);
@@ -69,6 +70,7 @@ class Civilization {
     this.paths=new Footpaths();this.lastPathReport=-100;this.lastMaterialReport=-100;
     this.nature=60;this.cooperation=80;this.messages=[];this.listeners=[];
     this.chronicle=[];this.nextChronicleId=1;this.lastYearRecorded=0;
+    this.godHistory=[];this.godHazards=[];this.godLandmarks=[];this.godNextId=1;
     this.avatar=createAvatar();this.externalWeather=null;this.externalWeatherEnabled=false;
     this.weather={kind:'clear',until:0};this.lastMiracle=-100;this.meetings=new Map();this.meetingSeq=0;this.lastNightNotice=-1;
     const worldRng=seeded(217); // same real terrain for every fresh simulation
@@ -981,6 +983,7 @@ class Civilization {
   }
   update(dt){
     this.seconds+=dt;this.day=Math.floor(this.seconds/75)+1;
+    advanceGodHazards(this,dt);
     advancePredators(this,dt);
     // Abort meetings whose routes became blocked after their initial plan.
     // Starvation must never arise because a partner waits forever.
