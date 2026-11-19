@@ -13,19 +13,20 @@ export class FootpathRenderer {
     for(let y=0;y<64;y++)for(let x=0;x<64;x++){
       const dx=(x-32)/32,dz=(y-32)/32,r=Math.hypot(dx,dz);
       const noise=Math.sin(x*1.5+y*3.3)*.08+Math.cos(y*.94-x*.41)*.06;
-      const alpha=Math.max(0,Math.min(1,(1.03-r+noise)*3.1));
+      // Path should look trodden into grass, not like an opaque beige tile.
+      const alpha=Math.pow(Math.max(0,Math.min(1,(1.02-r+noise)*1.55)),1.65);
       const i=(y*64+x)*4;
-      image.data[i]=185;image.data[i+1]=156;image.data[i+2]=107;
-      image.data[i+3]=Math.round(alpha*190);
+      image.data[i]=169;image.data[i+1]=145;image.data[i+2]=117;
+      image.data[i+3]=Math.round(alpha*120);
     }
     ctx.putImageData(image,0,0);
     const texture=new THREE.CanvasTexture(canvas);
     texture.colorSpace=THREE.SRGBColorSpace;
-    const geo=new THREE.PlaneGeometry(1.85,1.85);
+    const geo=new THREE.PlaneGeometry(1.65,1.65);
     geo.rotateX(-Math.PI/2);
     const mat=new THREE.MeshBasicMaterial({
       map:texture,side:THREE.DoubleSide,transparent:true,depthWrite:false,
-      opacity:.82,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1
+      opacity:.62,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1
     });
     this.mesh=new THREE.InstancedMesh(geo,mat,maxCells);
     this.mesh.count=0;this.mesh.frustumCulled=false;
