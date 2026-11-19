@@ -269,7 +269,10 @@ class Civilization {
         population:this.agents.length,averageMood:mood,
         buildings:this.material.structures,height:terrainHeight,
         paths:this.paths,known:knownSites,
-        obstacles:solidFootprints(this)
+        // Do not place a new building over anyone who is standing there.
+        obstacles:[...solidFootprints(this),...this.agents.map(person=>({
+          id:'actor-'+person.id,shape:'circle',x:person.x,z:person.z,r:.29
+        }))]
       });
       if(proposal){
         const project=this.material.createProject(proposal.recipe,{
