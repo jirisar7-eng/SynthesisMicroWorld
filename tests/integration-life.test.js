@@ -15,6 +15,7 @@ import {SocialDynamics} from '../src/social-dynamics.js';
 import {loadSpeed} from '../src/carry-poses.js';
 import {createSprings,springRefill,drinkFromSpring,waterAvailability} from '../src/water-cycle.js';
 import {calendarAt,ageResidents} from '../src/world-calendar.js';
+import {serializeWorld,restoreWorld,WORLD_SAVE_KEY} from '../src/world-save.js';
 import {initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS} from '../src/construction-stages.js';
 import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS} from '../src/avatar-modes.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,isBlocked} from '../src/spatial-world.js';
@@ -182,4 +183,40 @@ test('MW009-INTEGRATION-002: a year actually ages living residents and adds a ca
   assert.equal(person.profile.age,age+1);
   assert.ok(sim.chronicle.some(entry=>entry.title==='Nový rok světa'));
   assert.ok(person.profile.timeline.some(event=>event.event==='Narozeniny'));
+});
+
+test('MW009-SAVE-INTEGRATION-001: real world state survives reload without losing material identities or history',()=>{
+  const original=new Civilization();
+  original.material.add('wood',5);
+  original.springs[0].stock=9;
+  original.paths.record(7,4,2);
+  const actor=original.agents[0];
+  const id=original.material.items.find(i=>i.type==='wood'&&original.material.isAvailable(i)).id;
+  assert.equal(original.material.pickupStorage(actor,[id]),true);
+  original.meetings.set(999,{first:0,second:1,ready:new Set([0]),done:false});
+  original.addEvent('Skutečná událost','Zapsaná historie světa.','⌛');
+  const baseline=original.material.countAll();
+  const json=serializeWorld(original);
+  assert.ok(json.includes('Skutečná událost'));
+  const restored=new Civilization();
+  const info=restoreWorld(restored,json);
+  assert.equal(info.day,original.day);
+  assert.equal(restored.material.countAll(),baseline,'A saved cargo piece may be dropped, never deleted or duplicated');
+  assert.equal(restored.springs[0].stock,9);
+  assert.ok(restored.paths.cells instanceof Map);
+  assert.ok(restored.paths.trafficAt(7,4)>0);
+  assert.ok(restored.chronicle.some(e=>e.title==='Skutečná událost'));
+  assert.ok(restored.agents.every(p=>p.mode==='idle'&&p.waypoints.length===0));
+  assert.ok(restored.material.items.every(item=>restored.material.containers.has(item.container)));
+  assert.equal(restored.meetings.size,0,'Interrupted conversations restart, not resume stale pointers');
+  assert.ok(restored.chronicle.some(e=>e.title==='Návrat do světa'));
+  restored.update(.2);
+  assert.ok(restored.agents.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.z)));
+});
+
+test('MW009-SAVE-INTEGRATION-002: refuses corrupt save and leaves current world unchanged',()=>{
+  const sim=new Civilization(),age=sim.agents[0].profile.age;
+  assert.throws(()=>restoreWorld(sim,'{"version":0,"state":{}}'),/Unsupported/);
+  assert.throws(()=>restoreWorld(sim,'invalid'),/Unexpected|JSON|position|token/i);
+  assert.equal(sim.agents[0].profile.age,age);
 });
