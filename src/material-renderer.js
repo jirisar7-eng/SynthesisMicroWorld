@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {RECIPES,ITEM_INFO} from './material-world.js';
 import {stockSlotGroup} from './stockpile-layout.js';
+import {chooseVisualItems} from './visual-lod.js';
 import {handPose,cargoClass} from './carry-poses.js';
 import {terrainPose,foundationContact} from './terrain-contact.js';
 
@@ -170,8 +171,9 @@ function temporaryYardMesh(container,height){
 }
 
 export class MaterialRenderer {
-  constructor(scene,height){
-    this.scene=scene;this.height=height;this.itemMeshes=new Map();this.containers=new Map();
+  constructor(scene,height,visualBudget={maxPerGroup:38,maxTotal:680}){
+    this.scene=scene;this.height=height;
+    this.visualBudget=visualBudget;this.itemMeshes=new Map();this.containers=new Map();
     this.group=new THREE.Group();scene.add(this.group);
     this.previousSignature='';this.basketCount=0;
     this.carriers=new Map();
@@ -227,14 +229,19 @@ export class MaterialRenderer {
       else if(container.kind==='yard')mesh=temporaryYardMesh(container,this.height);
       if(mesh){this.group.add(mesh);this.containers.set(id,mesh);}
     }
-    const existing=new Set(economy.items.map(i=>i.id));
+    // Stock is still exact in the authoritative simulation and every item
+    // keeps its ID. We render a representative sample to avoid thousands of
+    // separate WebGL draw calls on Android (8,000+ food in current world).
+    const visualItems=chooseVisualItems(
+      economy.items,economy.containers,this.visualBudget);
+    const existing=new Set(visualItems.map(i=>i.id));
     for(const [id,mesh] of this.itemMeshes)if(!existing.has(id)){
       mesh.parent?.remove(mesh);this.itemMeshes.delete(id);
     }
     // One indexed layout pass: avoids O(n²) scans on mobile as stocks grow.
     const offsets=new Map(),groundContacts=[];
-    // Exact accounting: 1 object in data -> 1 visible piece (LOD may vary later).
-    for(const item of economy.items){
+    // Every selected item keeps its real ID and physical position.
+    for(const item of visualItems){
       const container=economy.containers.get(item.container);
       const key=item.container+':'+stockSlotGroup(item,container);
       const ordinal=offsets.get(key)||0;
@@ -288,8 +295,16 @@ export class MaterialRenderer {
       }
     }
     this.updateGroundShadows(groundContacts);
+    // Single-pass cargo lookup, not N expensive scans over large inventories.
+    const carriedByOwner=new Map();
+    for(const item of economy.items){
+      if(!item.container?.startsWith('carry-'))continue;
+      const owner=item.container.slice(6);
+      if(!carriedByOwner.has(owner))carriedByOwner.set(owner,[]);
+      carriedByOwner.get(owner).push(item);
+    }
     for(const [id,group] of this.carriers){
-      const carried=economy.items.filter(item=>item.container==='carry-'+id);
+      const carried=carriedByOwner.get(String(id))||[];
       if(group.userData.cargoSupport)group.userData.cargoSupport.visible=
         cargoClass(carried)==='hands';
       group.userData.carryClass=cargoClass(carried);

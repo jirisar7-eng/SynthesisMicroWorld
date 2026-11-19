@@ -153,3 +153,34 @@ export function createGroundClutter(scene,height,trees){
     scene.add(mesh);
   }
 }
+
+/**
+ * Cheap terrain-conforming contact shades for mobile when expensive dynamic
+ * shadow-map rendering is disabled. One draw call covers the entire forest.
+ * They do not block the world and never change authoritative tree positions.
+ */
+export function createTreeContactShadows(scene,height,trees){
+  if(!trees?.length)return null;
+  const geo=new THREE.CircleGeometry(1,14);
+  geo.rotateX(-Math.PI/2);
+  const material=new THREE.MeshBasicMaterial({
+    color:'#2c4835',transparent:true,opacity:.15,
+    depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,
+    polygonOffsetUnits:-2,side:THREE.DoubleSide
+  });
+  const mesh=new THREE.InstancedMesh(geo,material,trees.length);
+  mesh.frustumCulled=false;mesh.renderOrder=1;
+  const dummy=new THREE.Object3D();
+  for(let i=0;i<trees.length;i++){
+    const tree=trees[i];
+    dummy.position.set(tree.x,height(tree.x,tree.z)+.027,tree.z);
+    dummy.rotation.set(0,Math.sin(i*1.65),0);
+    const radius=.82+(i%5)*.16;
+    dummy.scale.set(radius,1,radius*.75);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i,dummy.matrix);
+  }
+  mesh.instanceMatrix.needsUpdate=true;
+  scene.add(mesh);
+  return mesh;
+}
