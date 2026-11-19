@@ -906,7 +906,10 @@ class Diorama {
     }groundGeo.setAttribute('color',new THREE.Float32BufferAttribute(vertices,3));groundGeo.computeVertexNormals();
     const land=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({map:createGroundTexture(THREE),vertexColors:true,roughness:1,side:THREE.DoubleSide}));land.receiveShadow=true;this.scene.add(land);
     const water=new THREE.Mesh(new THREE.PlaneGeometry(190,190),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
-    this.addCamp();this.treeModels=[];this.addForest();this.addBerries();
+    this.addCamp();
+    this.treeModels=[];this.berryModels=[];this.saplingModels=[];
+    this.boulderModels=[];this.fallenLogModels=[];
+    this.addForest();this.addBerries();
     createForestPatches(this.scene,terrainHeight,this.sim.trees);
     createTrampledCamp(this.scene,terrainHeight);
     createGroundClutter(this.scene,terrainHeight,this.sim.trees);
@@ -919,6 +922,7 @@ class Diorama {
     this.inventoryVisuals.bindCarriers(this.people);
     this.inventoryVisuals.sync(sim.material);
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
+    this.visitor=this.makeVisitor();this.lastPropRefresh=0;
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
     const canvas=this.renderer.domElement;let start={x:0,y:0};
     canvas.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
@@ -970,6 +974,46 @@ class Diorama {
   }
   mat(color,roughness=1){return new THREE.MeshStandardMaterial({color,roughness});}
   mesh(geometry,material,x,y,z,cast=true){const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;return m;}
+  makeVisitor(){
+    const group=new THREE.Group(),skin=this.mat('#e5c99f');
+    const clothes=this.mat('#b6a68a'),cape=this.mat('#eee9ca');
+    const body=this.mesh(new THREE.CylinderGeometry(.32,.41,.94,10),clothes,0,.93,0);
+    const head=this.mesh(new THREE.SphereGeometry(.31,12,10),skin,0,1.66,0);
+    const hood=this.mesh(new THREE.ConeGeometry(.4,.58,9),cape,0,2.07,-.06);
+    const halo=this.mesh(new THREE.TorusGeometry(.55,.055,7,20),
+      new THREE.MeshBasicMaterial({color:'#ffe4a1'}),0,2.52,0,false);
+    halo.rotation.x=Math.PI/2;
+    const legs=[];
+    for(const sign of [-1,1]){
+      const foot=this.mesh(new THREE.CylinderGeometry(.12,.13,.58,7),clothes,sign*.19,.32,0);
+      legs.push(foot);group.add(foot);
+    }
+    group.add(body,head,hood,halo);group.visible=false;this.scene.add(group);
+    return {group,body,head,hood,halo,legs,clothes,cape};
+  }
+  updateVisitor(time){
+    const avatar=this.sim.avatar,model=this.visitor;
+    const mode=avatar.mode,active=mode!=='observer';
+    this.controls.enabled=!active;
+    model.group.visible=mode==='god'||mode==='poor';
+    if(!active)return;
+    const y=terrainHeight(avatar.x,avatar.z);
+    model.group.position.set(avatar.x,y+.06,avatar.z);
+    model.group.rotation.y=avatar.yaw;
+    model.clothes.color.set(mode==='god'?'#f1e7c5':'#827260');
+    model.cape.color.set(mode==='god'?'#f8edaa':'#776754');
+    model.halo.visible=mode==='god';
+    model.hood.visible=mode==='god';
+    const moving=avatar.controls.forward||avatar.controls.back;
+    for(let i=0;i<model.legs.length;i++){
+      model.legs[i].rotation.x=moving?Math.sin(this.timer*9+i*Math.PI)*.32:0;
+    }
+    const cameraOffset=4.6;
+    const cameraGoal=new THREE.Vector3(avatar.x-Math.sin(avatar.yaw)*cameraOffset,
+      y+3.1,avatar.z-Math.cos(avatar.yaw)*cameraOffset);
+    this.camera.position.lerp(cameraGoal,Math.min(.4,time*8+.04));
+    this.camera.lookAt(avatar.x,y+1.25,avatar.z);
+  }
   resetCamera(){this.camera?.position.set(29,37,48);if(this.controls){this.controls.target.set(0,1.4,0);this.controls.update();}}
   addCamp(){
     // No raised, perfectly circular beige platform: terrain decals now form
@@ -1012,7 +1056,7 @@ class Diorama {
       const g=new THREE.Group();g.position.set(x,terrainHeight(x,z),z);g.scale.setScalar(.44+rng()*.3);
       g.add(this.mesh(new THREE.CylinderGeometry(.13,.21,1.7,6),saplingTrunk,0,.9,0));
       g.add(this.mesh(new THREE.IcosahedronGeometry(1.18,1),leafPal[i%leafPal.length],0,2.3,0));
-      this.scene.add(g);
+      this.scene.add(g);this.saplingModels.push({id:p.id,model:g});
     }
   }
   addBerries(){
@@ -1021,7 +1065,8 @@ class Diorama {
       const y=terrainHeight(p.x,p.z);const g=new THREE.Group();g.position.set(p.x,y,p.z);
       for(let i=0;i<3;i++){const ang=i*2.094;g.add(this.mesh(new THREE.SphereGeometry(.6,7,5),mat,Math.cos(ang)*.42,.64,Math.sin(ang)*.42));}
       for(let i=0;i<4;i++){const ang=i*1.57;g.add(this.mesh(new THREE.SphereGeometry(.13,6,5),fruit,Math.cos(ang)*.62,1.03,Math.sin(ang)*.58));}
-      g.add(this.mesh(new THREE.CylinderGeometry(.07,.11,.75,5),stem,0,.37,0));this.scene.add(g);
+      g.add(this.mesh(new THREE.CylinderGeometry(.07,.11,.75,5),stem,0,.37,0));
+      this.scene.add(g);this.berryModels.push({id:p.id,model:g});
     }
   }
   addRocksAndGrass(){
@@ -1031,7 +1076,8 @@ class Diorama {
       const r=p.r;
       const m=this.mesh(new THREE.DodecahedronGeometry(r/1.45,0),stone[p.id%stone.length],
         p.x,terrainHeight(p.x,p.z)+r*.42,p.z);
-      m.scale.set(1.45,.73,1.07);m.rotation.y=p.id*2.399963229728;this.scene.add(m);
+      m.scale.set(1.45,.73,1.07);m.rotation.y=p.id*2.399963229728;
+      this.scene.add(m);this.boulderModels.push({id:p.id,model:m});
     }
     const dummy=new THREE.Object3D();
     // Dense but cheap grass tufts, distributed in clumps around the viewing area.
@@ -1103,7 +1149,8 @@ class Diorama {
       const x=p.x,z=p.z;
       const fallen=this.mesh(new THREE.CylinderGeometry(.13,.18,1.3+(p.id%5)*.12,6),
         wood,x,terrainHeight(x,z)+.18,z);
-      fallen.rotation.z=Math.PI/2;fallen.rotation.y=p.yaw;this.scene.add(fallen);
+      fallen.rotation.z=Math.PI/2;fallen.rotation.y=p.yaw;
+      this.scene.add(fallen);this.fallenLogModels.push({id:p.id,model:fallen});
     }
     // Butterflies float around wildflowers. Pure presentation, no simulated agents.
     this.butterflies=[];
@@ -1240,6 +1287,16 @@ class Diorama {
       const carrying=g.userData.carryClass!=='empty';
       g.userData.cargoAnchor.rotation.x=carrying?Math.sin(this.timer*8+i)*.015:0;
     });
+    this.lastPropRefresh+=time;
+    if(this.lastPropRefresh>.35){
+      this.lastPropRefresh=0;
+      for(const [models,data] of [
+        [this.boulderModels,this.sim.boulders],[this.berryModels,this.sim.berries],
+        [this.saplingModels,this.sim.saplings],[this.fallenLogModels,this.sim.fallenLogs]]){
+        const alive=new Set(data.map(o=>o.id));
+        for(const entry of models)entry.model.visible=alive.has(entry.id);
+      }
+    }
     for(const tree of this.treeModels){
       if(tree.resource.stock<=0&&tree.model.scale.y>.32)tree.model.scale.y=.32;
       tree.model.rotation.z=Math.sin(this.timer*.72+tree.resource.id*1.9)*.012;
@@ -1257,7 +1314,9 @@ class Diorama {
     this.fire.visible=lit;
     this.campLight.intensity=lit?(1.4+(1-daylight)*3)*actualHeat/100:0;
     this.fire.scale.y=lit?(.3+actualHeat/130)*(1+Math.sin(this.timer*9)*.14):.01;
-    this.controls.update();this.renderer.render(this.scene,this.camera);
+    this.updateVisitor(time);
+    if(this.sim.avatar.mode==='observer')this.controls.update();
+    this.renderer.render(this.scene,this.camera);
   }
   resize(){const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h,false);}
 }
