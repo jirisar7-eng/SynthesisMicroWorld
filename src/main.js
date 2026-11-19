@@ -259,9 +259,10 @@ class Diorama {
   }
   focusIsland(far){
     const x=far?86:0;
-    // The smaller island needs a nearer camera or it looks like a tiny flat
-    // pancake surrounded by fog from the default first-island viewpoint.
-    this.camera.position.set(x+(far?19:29),far?27:37,far?34:48);
+    // Increase the downward angle without moving the physics or the village:
+    // on portrait phones the old low orbit showed mostly empty sky.
+    // Maintain roughly the same distance so buildings do not shrink.
+    this.camera.position.set(x+(far?17:25),far?34:49,far?28:38);
     if(this.controls){this.controls.target.set(x,1.4,0);this.controls.update();}
   }
   resetCamera(){this.focusIsland(false);}
@@ -1337,11 +1338,11 @@ try{
     perfBadge=document.createElement('output');
     perfBadge.id='mw-render-fps';
     perfBadge.setAttribute('aria-hidden','true');
-    perfBadge.style.cssText='position:fixed;top:73px;left:50%;transform:translateX(-50%);'+
-      'z-index:25;padding:7px 10px;border-radius:9px;background:#142c25e6;'+
-      'color:#e5f3df;font:600 11px system-ui;white-space:nowrap;pointer-events:none';
-    perfBadge.textContent='Měřím plynulost 3D...';
-    document.body.append(perfBadge);
+    perfBadge.className='mw-performance-pill';
+    perfBadge.textContent='Měřím FPS';
+    // Place the optional indicator BETWEEN existing Live World and Weather
+    // badges, not over either of them or the NPC/biography navigation.
+    document.querySelector('.scene-overlay-top').append(perfBadge);
   }
   function frame(){
     // UI failures must NEVER terminate requestAnimationFrame: otherwise the
@@ -1379,8 +1380,9 @@ try{
       if(elapsed>=1200){
         const stats=window.__MW_VISUAL_STATS__;
         const fps=Math.round(perfFrames*1000/elapsed);
-        perfBadge.textContent=fps+' FPS · '+stats.drawCalls+
-          ' 3D volání · '+stats.visibleItemMeshes+'/'+stats.inventoryItemCount+' zásob';
+        perfBadge.textContent=fps+' FPS · '+stats.drawCalls;
+        perfBadge.title=stats.drawCalls+' 3D volání · '+
+          stats.visibleItemMeshes+'/'+stats.inventoryItemCount+' zásob';
         perfSince=now;perfFrames=0;
       }
     }
