@@ -333,8 +333,8 @@ class Civilization {
       const field=this.material.fields[0],result=field&&this.material.harvest(field.id);
       if(result){
         experienceSkill(a,'farm',7);
-        lifeEvent(a,this.day,'Sklidil pole',result.grain+' kusů obilí a '+result.seeds+' semen.');
-        this.addEvent('Sklizeň úrody',a.name+' sklidil '+result.grain+' kusů obilí a nová semena.','❀');
+        lifeEvent(a,this.day,'Sklidil pole',result.berries+' porcí bobulí a '+result.seeds+' semen.');
+        this.addEvent('Sklizeň úrody',a.name+' sklidil '+result.berries+' porcí bobulí a nová semena.','❀');
       }
       this.syncStock();this.idle(a);return;
     }
@@ -357,7 +357,8 @@ class Civilization {
   update(dt){
     this.seconds+=dt;this.day=Math.floor(this.seconds/75)+1;
     this.material.tick(dt,this.weather.kind);
-    const fuel=this.material.burnWood(this.seconds,this.weather.kind);
+    const fuel=(this.material.structures.length||this.material.count('wood')>17)?
+      this.material.burnWood(this.seconds,this.weather.kind):null;
     if(fuel&&this.seconds-this.lastFireEvent>12){
       this.lastFireEvent=this.seconds;
       this.addEvent('Vlastnosti paliva',
