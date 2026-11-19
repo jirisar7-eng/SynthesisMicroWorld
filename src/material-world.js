@@ -183,6 +183,49 @@ export class MaterialWorld {
     }
     return null;
   }
+  prepareDeparture(agent){
+    const wood=this.items.filter(i=>i.type==='wood'&&this.isAvailable(i)).slice(0,2);
+    const food=this.items.filter(i=>FOOD_TYPES.includes(i.type)&&this.isAvailable(i)).slice(0,2);
+    if(wood.length!==2||food.length!==2)return false;
+    const bag=this.cargoContainer(agent);
+    for(const item of [...wood,...food])item.container=bag.id;
+    this.logistics.transported+=4;
+    return true;
+  }
+  pitchTent(agent,site,time){
+    const bag=this.cargo(agent);
+    const logs=bag.filter(i=>i.type==='wood').slice(0,2);
+    if(logs.length!==2)return null;
+    const spent=new Set(logs.map(i=>i.id));
+    this.items=this.items.filter(i=>!spent.has(i.id));
+    const id='tent-'+(this.tents.length+1);
+    const tent={id,type:'tent',x:site.x,z:site.z,ownerId:agent.id,builtAt:time,roof:true};
+    this.tents.push(tent);
+    const basket={id:'tent-storage-'+id,name:'Zásoby u stanu',kind:'tentStorage',
+      x:site.x+.5,z:site.z+.6,roof:true,ownerId:agent.id};
+    this.containers.set(basket.id,basket);
+    for(const item of this.cargo(agent))item.container=basket.id;
+    return tent;
+  }
+  foodAtTent(tentId){
+    const container='tent-storage-'+tentId;
+    return this.items.filter(i=>i.container===container&&FOOD_TYPES.includes(i.type)).length;
+  }
+  eatAtTent(agent,tentId){
+    const container='tent-storage-'+tentId;
+    const food=this.items.find(i=>i.container===container&&FOOD_TYPES.includes(i.type));
+    if(!food)return false;
+    this.items=this.items.filter(i=>i.id!==food.id);
+    return true;
+  }
+  packTentReturn(agent,tentId){
+    const container='tent-storage-'+tentId;
+    const bag=this.cargoContainer(agent);
+    const moved=this.items.filter(i=>i.container===container);
+    for(const item of moved)item.container=bag.id;
+    return moved.length;
+  }
+
   cargoContainer(agent){
     const id='carry-'+agent.id;
     let container=this.containers.get(id);
