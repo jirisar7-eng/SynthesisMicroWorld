@@ -343,3 +343,11 @@ body.remote-world .god-flyout summary{font-size:11px}
   .page-map .scene-overlay-bottom #btn-reset-camera{display:none}
   .page-map .scene-overlay-bottom{justify-content:flex-start}
 }
+
+/* MW-015: visible read-only truth about movement in the server world. */
+.remote-motion-status{display:block;margin-top:7px;font-size:10px;line-height:1.45;
+  font-weight:650;color:#bbd9b5;max-width:350px}
+.remote-motion-status[hidden]{display:none}
+@media(max-width:720px){
+  .remote-motion-status{font-size:9px;max-width:230px}
+}
