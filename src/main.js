@@ -16,6 +16,7 @@ import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABEL
 import {fetchExternalWeather} from './external-world-api.js';
 import {createSprings,springRefill,drinkFromSpring,waterAvailability} from './water-cycle.js';
 import {calendarAt,ageResidents} from './world-calendar.js';
+import {WORLD_SAVE_KEY,serializeWorld,restoreWorld} from './world-save.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot} from './spatial-world.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
@@ -1453,6 +1454,18 @@ class Diorama {
 let selectedAgent=0;
 const sim=new Civilization();
 let world;
+let initialSaveStatus='Nový svět';
+try{
+  const rawSave=window.localStorage.getItem(WORLD_SAVE_KEY);
+  if(rawSave){
+    const restored=restoreWorld(sim,rawSave);
+    initialSaveStatus='Načtený svět · den '+restored.day;
+  }
+}catch(error){
+  initialSaveStatus='Uložený svět nelze načíst; nový svět byl vytvořen';
+  console.error('MicroWorld save restore failed',error);
+}
+
 // Two real navigable page routes; transitions preserve the running simulation and WebGL instance.
 function pageFromLocation(){
   return location.pathname.startsWith('/lide')?'people':
@@ -1604,7 +1617,7 @@ function renderLifePage(){
       list.append(button);
     }
   }
-  el('people-day').textContent='Den '+sim.day;
+  el('people-day').textContent='Rok '+calendarAt(sim.day).year+' · Den '+sim.day;
   for(const button of list.children){
     button.setAttribute('aria-pressed',Number(button.dataset.person)===selectedAgent?'true':'false');
   }
@@ -1663,7 +1676,7 @@ function renderLifePage(){
 function renderUI(){
   el('people').textContent=sim.agents.length;el('wood').textContent=sim.wood;el('food').textContent=sim.food;
   el('m-people').textContent=sim.agents.length;el('m-wood').textContent=sim.wood;el('m-food').textContent=sim.food;
-  el('day').textContent='Den '+sim.day;
+  el('day').textContent='Rok '+calendarAt(sim.day).year+' · Den '+sim.day;
   if(document.body.classList.contains('page-map')){
     if(el('map-trails'))el('map-trails').textContent=sim.paths.summary().trails;
     if(el('map-hauls'))el('map-hauls').textContent=sim.material.logistics.constructionDeliveries;
@@ -1697,7 +1710,7 @@ function renderUI(){
   el('map-npc-action').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';
   el('map-npc-reason').textContent=a.reason;
   el('npc-personality').textContent=a.personality.name;
-  const stats=[['hunger',a.hunger],['social',a.socialNeed],['energy',a.energy],['mood',a.mood]];
+  const stats=[['hunger',a.hunger],['thirst',a.thirst],['social',a.socialNeed],['energy',a.energy],['mood',a.mood]];
   for(const [name,value] of stats){
     el('npc-'+name).textContent=Math.round(value)+' %';
     el('need-'+name).style.width=clamp(value,0,100)+'%';
@@ -1833,6 +1846,29 @@ el('btn-live-weather').addEventListener('click',()=>{
   }
 });
 window.setInterval(()=>{if(sim.externalWeatherEnabled)updateExternalWeather();},600000);
+// Local autosave preserves actual NPC decisions, inventory IDs, trails, spring
+// reserves, elapsed years and the world chronicle on this browser only.
+let saveDebounce=false;
+function saveCurrentWorld(manual=false){
+  if(saveDebounce)return;
+  saveDebounce=true;
+  try{
+    window.localStorage.setItem(WORLD_SAVE_KEY,serializeWorld(sim));
+    if(el('save-status'))el('save-status').textContent=
+      (manual?'Ručně uloženo':'Automaticky uloženo')+
+      ' · rok '+calendarAt(sim.day).year+' / den '+sim.day;
+  }catch(error){
+    if(el('save-status'))el('save-status').textContent='Uložení selhalo · '+error.message;
+    console.warn('MicroWorld local save unavailable',error);
+  }finally{saveDebounce=false;}
+}
+if(el('save-status'))el('save-status').textContent=initialSaveStatus;
+el('btn-save-world').addEventListener('click',()=>saveCurrentWorld(true));
+window.setInterval(()=>saveCurrentWorld(false),30000);
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden')saveCurrentWorld(false);
+});
+window.addEventListener('beforeunload',()=>saveCurrentWorld(false));
 el('btn-pause').addEventListener('click',()=>{paused=!paused;el('btn-pause').textContent=paused?'▶':'Ⅱ';el('btn-pause').title=paused?'Pokračovat':'Pozastavit';});
 const speeds=[1,2,4];let speedIndex=0,paused=false;
 el('btn-speed').addEventListener('click',()=>{speedIndex=(speedIndex+1)%3;el('btn-speed').textContent=speeds[speedIndex]+'×';});
