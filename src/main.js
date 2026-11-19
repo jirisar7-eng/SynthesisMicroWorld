@@ -602,6 +602,54 @@ function events(){
 }
 sim.listeners.push(m=>{events();if(m.title.includes('stavba')||m.title.includes('přístřešek'))announce(m.detail);});
 function chooseAgent(index){selectedAgent=index;renderUI();}
+function drawPersonalKnowledgeMap(knowledge, person){
+  const canvas=el('knowledge-map');
+  if(!canvas || !document.body.classList.contains('page-overview'))return;
+  const ctx=canvas.getContext('2d');
+  if(!ctx)return;
+  const w=canvas.width,h=canvas.height;
+  const scale=Math.min((w-28)/74,(h-24)/74);
+  const xToScreen=x=>w/2+x*scale, zToScreen=z=>h/2+z*scale;
+  ctx.clearRect(0,0,w,h);
+  const background=ctx.createLinearGradient(0,0,w,h);
+  background.addColorStop(0,'#172820');background.addColorStop(1,'#101d1b');
+  ctx.fillStyle=background;ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='rgba(113,151,124,.10)';ctx.lineWidth=1;
+  for(let coord=-35;coord<=35;coord+=5){
+    const x=xToScreen(coord),z=zToScreen(coord);
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,z);ctx.lineTo(w,z);ctx.stroke();
+  }
+  // Revealed areas come ONLY from this citizen's visited cells.
+  for(const p of knowledge.visited){
+    const x=xToScreen(p.x),z=zToScreen(p.z);
+    const glow=ctx.createRadialGradient(x,z,1,x,z,7.1*scale);
+    glow.addColorStop(0,'rgba(111,158,102,.38)');
+    glow.addColorStop(.55,'rgba(107,155,108,.19)');
+    glow.addColorStop(1,'rgba(107,155,108,0)');
+    ctx.fillStyle=glow;ctx.fillRect(x-8*scale,z-8*scale,16*scale,16*scale);
+  }
+  ctx.beginPath();ctx.arc(xToScreen(0),zToScreen(0),4,0,Math.PI*2);
+  ctx.fillStyle='#e8c88c';ctx.fill();
+  ctx.fillStyle='#e8c88c';ctx.font='11px sans-serif';ctx.fillText('Tábor',xToScreen(0)+9,zToScreen(0)-7);
+  for(const r of knowledge.resources){
+    const x=xToScreen(r.x),z=zToScreen(r.z);
+    if(x<4||x>w-4||z<4||z>h-4)continue;
+    const fromOthers=r.origin==='heard';
+    ctx.beginPath();ctx.arc(x,z,r.type==='tree'?3.5:4.2,0,Math.PI*2);
+    ctx.fillStyle=fromOthers?'#eebd6a':r.type==='tree'?'#9cd584':'#77d1b9';
+    ctx.fill();
+    if(fromOthers){ctx.strokeStyle='#fbdfac';ctx.lineWidth=1.1;ctx.stroke();}
+  }
+  const px=xToScreen(person.x),pz=zToScreen(person.z);
+  ctx.beginPath();ctx.arc(px,pz,9,0,Math.PI*2);
+  ctx.strokeStyle='rgba(244,251,235,.72)';ctx.lineWidth=1.4;ctx.stroke();
+  ctx.beginPath();ctx.arc(px,pz,4.6,0,Math.PI*2);
+  ctx.fillStyle='#ffffff';ctx.fill();
+  ctx.fillStyle='rgba(230,242,221,.65)';
+  ctx.font='10px sans-serif';ctx.fillText('Jen '+person.name+'ovy znalosti',12,h-12);
+}
+
 function renderUI(){
   el('people').textContent=sim.agents.length;el('wood').textContent=sim.wood;el('food').textContent=sim.food;
   el('m-people').textContent=sim.agents.length;el('m-wood').textContent=sim.wood;el('m-food').textContent=sim.food;
@@ -639,7 +687,37 @@ function renderUI(){
     button.disabled=remaining>.01;
     button.title=remaining>0?'Další zásah za '+Math.ceil(remaining)+' herních sekund':'Změnit podmínky světa';
   }
-  el('god-cooldown').textContent=remaining>0?
+  const knowledge=knowledgeSummary(a);
+  el('map-knowledge-count').textContent=
+    knowledge.seen+' přímo objevených · '+knowledge.heard+' z doslechu';
+  el('known-tree-count').textContent=knowledge.trees;
+  el('known-berry-count').textContent=knowledge.berries;
+  el('known-heard-count').textContent=knowledge.heard;
+  el('known-places-count').textContent=knowledge.places;
+  el('knowledge-discoveries').textContent=knowledge.discoveries+' objevů';
+  const last=knowledge.lastDecision;
+  el('knowledge-goal').textContent=last?(actions[last.goal]||last.goal):'Rozhlíží se po novém světě';
+  el('knowledge-cause').textContent=last?.cause||'Zatím nemá dost informací k rozhodnutí.';
+  el('knowledge-source').textContent=last?.source==='heard'?'Zdroj informace: vyprávění jiného obyvatele':
+    last?.source==='seen'?'Zdroj informace: vlastní pozorování':
+    'Zdroj rozhodnutí: vlastní potřeby a zkušenosti';
+  if(document.body.classList.contains('page-overview')){
+    drawPersonalKnowledgeMap(knowledge,a);
+    const episodes=el('knowledge-episodes');
+    episodes.replaceChildren();
+    const recent=a.cognition.episodes.slice(-4).reverse();
+    if(!recent.length){const p=document.createElement('p');p.className='knowledge-episode';
+      p.textContent='Zatím nemá žádné významné zkušenosti.';episodes.appendChild(p);}
+    for(const moment of recent){
+      const article=document.createElement('article');article.className='knowledge-episode';
+      const title=document.createElement('strong');title.textContent=moment.title;
+      const cause=document.createElement('p');cause.textContent='Příčina: '+moment.cause;
+      const result=document.createElement('p');result.textContent='Důsledek: '+moment.outcome;
+      const date=document.createElement('small');date.textContent='Den '+(Math.floor(moment.time/75)+1);
+      article.append(title,cause,result,date);episodes.appendChild(article);
+    }
+  }
+    el('god-cooldown').textContent=remaining>0?
     'Další zásah za '+Math.ceil(remaining)+' herních sekund · lidé stále rozhodují sami':
     'Můžeš změnit podmínky světa. Každý zásah se zapíše do historie.';
 }
