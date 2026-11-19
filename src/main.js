@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
+import {initializeLife, updateLife, remember, socialBond, needsDecision, relationshipLabel} from './life.js';
 
 const el = id => document.getElementById(id);
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
@@ -29,9 +30,10 @@ class Civilization {
   constructor(){
     this.seconds=0;this.day=1;this.wood=0;this.food=14;this.shelters=[];this.construction=null;
     this.nature=60;this.cooperation=80;this.messages=[];this.listeners=[];
+    this.weather={kind:'clear',until:0};this.lastMiracle=-100;this.meetings=new Map();this.meetingSeq=0;this.lastNightNotice=-1;
     this.trees=points(83,13,34,0).map((p,i)=>({...p,id:i,stock:9,maxStock:9}));
     this.berries=points(28,8,32).map((p,i)=>({...p,id:i,stock:10,maxStock:10}));
-    this.agents=names.map((name,i)=>({id:i,name,x:rand(-2.8,2.8),z:rand(-2.8,2.8),energy:75+rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,workRemaining:0,workTotal:0,choiceAt:0,speed:2+rand(0,0.55),color:colors[i]}));
+    this.agents=names.map((name,i)=>initializeLife({id:i,name,x:rand(-2.8,2.8),z:rand(-2.8,2.8),energy:75+rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,workRemaining:0,workTotal:0,choiceAt:0,speed:2+rand(0,0.55),color:colors[i]},i));
     this.nextMeal=75;this.lastScout=-999;this.addEvent('Nový začátek','Šest obyvatel dorazilo do neznámé krajiny.','✧');
     this.addEvent('První rozhodnutí','Obyvatelé sami zjišťují, co potřebují k přežití.','◈');
   }
@@ -40,6 +42,38 @@ class Civilization {
     this.listeners.forEach(f=>f(this.messages[0]));
   }
   setPolicies(nature,cooperation){this.nature=+nature;this.cooperation=+cooperation;}
+  // A god changes the environment, never takes over an NPC's decisions.
+  miracle(kind){
+    if(this.seconds-this.lastMiracle<12)return false;
+    this.lastMiracle=this.seconds;
+    if(kind==='rain'){
+      this.weather={kind:'rain',until:this.seconds+50};
+      for(const berry of this.berries)berry.stock=Math.min(berry.maxStock,berry.stock+2);
+      this.addEvent('Božský zásah: déšť','Na krajinu začalo pršet. Rostliny se lépe obnovují, lidé se rozhodují podle počasí.','☂');
+    }else if(kind==='bloom'){
+      for(const berry of this.berries)berry.stock=Math.min(berry.maxStock,berry.stock+6);
+      this.addEvent('Božský zásah: úroda','Krajina náhle rozkvetla a zvýšila se dostupnost plodů. Obyvatelé je stále musí sami sesbírat.','✿');
+    }else if(kind==='drought'){
+      this.weather={kind:'drought',until:this.seconds+50};
+      for(const berry of this.berries)berry.stock=Math.max(0,berry.stock-4);
+      this.addEvent('Božský zásah: sucho','Úroda zeslábla. Obyvatelé se budou muset přizpůsobit nedostatku zdrojů.','☀');
+    }else return false;
+    return true;
+  }
+  beginConversation(a,b){
+    const id=++this.meetingSeq;
+    const x=rand(-2.7,2.7),z=rand(-3,3);
+    this.meetings.set(id,{first:a.id,second:b.id,ready:new Set(),done:false});
+    a.conversation=id;b.conversation=id;
+    this.go(a,'meet',{x:x-.45,z},'Chce si popovídat s '+b.name+' a posílit vztahy.');
+    this.go(b,'meet',{x:x+.45,z},'Přijal pozvání od '+a.name+' ke společnému rozhovoru.');
+  }
+  seekConversation(a){
+    const candidates=this.agents.filter(b=>b.id!==a.id && b.mode==='idle' && b.socialNeed>=38 && b.energy>23 && b.hunger<72);
+    if(!candidates.length)return false;
+    const b=candidates.sort((x,y)=>(y.socialNeed+(a.relationships[y.id]||0)*.12)-(x.socialNeed+(a.relationships[x.id]||0)*.12))[0];
+    this.beginConversation(a,b);return true;
+  }
   go(a,purpose,target,reason,resource=null){
     a.mode='walk';a.purpose=purpose;a.target={x:target.x,z:target.z};a.reason=reason;a.resource=resource;
   }
@@ -50,7 +84,15 @@ class Civilization {
   closestAvailable(list,a){return list.filter(p=>p.stock>0).sort((p,q)=>dist(a,p)-dist(a,q))[0];}
   decide(a){
     if(this.seconds<a.choiceAt)return;
-    if(a.energy<21){this.go(a,'rest',{x:rand(-3,3),z:rand(-3,3)},'Je unavený a potřebuje odpočinek.');return;}
+    const need=needsDecision(a,this.food);
+    if(need==='eat'){
+      this.go(a,'eat',{x:rand(-2,2),z:rand(-2,2)},'Má hlad ('+Math.round(a.hunger)+' %) a jde se samostatně najíst.');return;
+    }
+    const dark=(this.seconds%75)/75>.72 || (this.seconds%75)/75<.11;
+    if(need==='rest'||(dark && a.energy<76)){
+      this.go(a,'rest',{x:rand(-3,3),z:rand(-3,3)},dark?'Je noc a chce se vyspat.':'Je unavený a potřebuje odpočinek.');return;
+    }
+    if(need==='social' && this.seekConversation(a))return;
     if(!this.construction && this.shelters.length<1 && this.wood>=12){
       this.wood-=12;this.construction={x:5.1,z:4.9,progress:0,agentId:a.id};
       this.addEvent('Vzniká první stavba',a.name+' se rozhodl postavit přístřešek. Osada má dost dřeva.','⌂');
@@ -66,7 +108,7 @@ class Civilization {
     const woods=this.trees.filter(t=>t.stock>0);
     const berry=this.closestAvailable(this.berries,a);
     const tree=this.closestAvailable(woods,a);
-    if(gatherFood && berry){
+    if((gatherFood || (a.hunger>=70 && this.food===0)) && berry){
       this.go(a,'berries',berry,urgentFood?'Zásoby potravy klesají. Rozhodl se hledat bobule.':'Zajišťuje zásoby potravy pro ostatní.',berry);return;
     }
     if(tree && (this.shelters.length===0 || (this.wood<5 && Math.random()*100>this.nature/2) || (this.nature<70 && (this.wood<25 || Math.random()*100>this.nature)))){
@@ -76,6 +118,22 @@ class Civilization {
     this.go(a,'explore',{x:rand(-27,27),z:rand(-27,27)},'Zkoumá krajinu a hledá další příležitosti.');
   }
   arrived(a){
+    if(a.purpose==='meet'){
+      const conversation=this.meetings.get(a.conversation);
+      if(!conversation){this.idle(a);return;}
+      a.mode='waiting';a.purpose='waiting';a.reason='Čeká na druhého obyvatele, aby spolu mohli mluvit.';
+      conversation.ready.add(a.id);
+      if(conversation.ready.size===2){
+        const first=this.agents[conversation.first],second=this.agents[conversation.second];
+        this.work(first,'talking',4.5,'Povídá si s '+second.name+' u ohniště.');
+        this.work(second,'talking',4.5,'Povídá si s '+first.name+' u ohniště.');
+        this.addEvent('Setkání obyvatel',first.name+' a '+second.name+' si spolu povídají.','♡');
+      }
+      return;
+    }
+    if(a.purpose==='eat'){
+      this.work(a,'eating',3,'Jí ze společných zásob a doplňuje síly.');return;
+    }
     if(a.purpose==='wood'){
       if(!a.resource || a.resource.stock<=0){this.idle(a);return;}
       this.work(a,'harvest',2.8+rand(0,1),'Sbírá dřevo z nalezeného stromu.');return;
@@ -99,17 +157,38 @@ class Civilization {
     if(a.purpose==='explore'){if(this.seconds-this.lastScout>15){this.addEvent('Průzkum okolí',a.name+' prozkoumal další kus krajiny.','⌕');this.lastScout=this.seconds;}this.idle(a);}
   }
   completed(a){
+    if(a.purpose==='eating'){
+      if(this.food>0){
+        this.food--;a.hunger=Math.max(0,a.hunger-76);a.mood=Math.min(100,a.mood+7);
+        a.lastMeal=this.seconds;remember(a,'Najedl se ze zásob osady');
+      }else{a.mood=Math.max(0,a.mood-8);remember(a,'Nenašel jídlo, když měl hlad');}
+      this.idle(a);return;
+    }
+    if(a.purpose==='talking'){
+      const meeting=this.meetings.get(a.conversation);
+      if(meeting && !meeting.done){
+        meeting.done=true;
+        const first=this.agents[meeting.first],second=this.agents[meeting.second];
+        socialBond(first,second);
+        this.addEvent('Nové přátelství',first.name+' a '+second.name+' si popovídali a posílili svůj vztah.','♡');
+        this.meetings.delete(a.conversation);
+      }
+      a.conversation=null;this.idle(a);return;
+    }
     if(a.purpose==='harvest'){
       const amount=Math.min(a.resource?.stock||0,3);if(a.resource)a.resource.stock-=amount;
-      a.carry=amount;this.go(a,'returnwood',{x:0,z:0},'Nese '+amount+' jednotky dřeva do společných zásob.');return;
+      a.carry=amount;remember(a,'Nasbíral dřevo pro osadu');
+      this.go(a,'returnwood',{x:0,z:0},'Nese '+amount+' jednotky dřeva do společných zásob.');return;
     }
     if(a.purpose==='forage'){
       const amount=Math.min(a.resource?.stock||0,4);if(a.resource)a.resource.stock-=amount;
-      a.carry=amount;this.go(a,'returnfood',{x:0,z:0},'Nese nasbírané jídlo do společných zásob.');return;
+      a.carry=amount;remember(a,'Nasbíral potravu pro ostatní');
+      this.go(a,'returnfood',{x:0,z:0},'Nese nasbírané jídlo do společných zásob.');return;
     }
     if(a.purpose==='building' && this.construction){
       this.shelters.push({x:this.construction.x,z:this.construction.z});
-      this.construction=null;this.addEvent('První přístřešek je hotový',a.name+' dokončil první stavbu bez jakéhokoli příkazu hráče.','⌂');
+      this.construction=null;remember(a,'Dokončil první přístřešek');
+      this.addEvent('První přístřešek je hotový',a.name+' dokončil první stavbu bez jakéhokoli příkazu hráče.','⌂');
       this.idle(a);return;
     }
     if(a.purpose==='resting'){a.energy=Math.min(100,a.energy+68);this.idle(a);return;}
@@ -117,12 +196,22 @@ class Civilization {
   }
   update(dt){
     this.seconds+=dt;this.day=Math.floor(this.seconds/75)+1;
-    if(this.seconds>=this.nextMeal){
-      this.nextMeal+=75;this.food=Math.max(0,this.food-6);
-      this.addEvent('Nový den','Obyvatelé spotřebovali 6 jednotek potravy.','☼');
-      for(const b of this.berries)b.stock=Math.min(b.maxStock,b.stock+3);
+    if(this.weather.kind!=='clear' && this.seconds>=this.weather.until){
+      this.weather={kind:'clear',until:0};
+      this.addEvent('Počasí se uklidnilo','Krajina se vrací k běžným podmínkám.','☼');
+    }
+    while(this.seconds>=this.nextMeal){
+      this.nextMeal+=75;
+      const recovery=this.weather.kind==='rain'?6:this.weather.kind==='drought'?1:3;
+      for(const b of this.berries)b.stock=Math.min(b.maxStock,b.stock+recovery);
+      this.addEvent('Nový den','Začal další den. Jídlo už nespotřebovává osada hromadně: každý NPC jí podle vlastního hladu.','☼');
+    }
+    const night=(this.seconds%75)/75>.73;
+    if(night && this.lastNightNotice!==this.day){
+      this.lastNightNotice=this.day;this.addEvent('Přichází večer','Obyvatelé se postupně rozhodují, zda dokončit práci, setkat se, nebo jít odpočívat.','☾');
     }
     for(const a of this.agents){
+      updateLife(a,dt,this.weather.kind);
       if(a.mode==='idle'){this.decide(a);continue;}
       if(a.mode==='walk' && a.target){
         const d=dist(a,a.target),step=a.speed*dt;
