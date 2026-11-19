@@ -13,6 +13,8 @@ import {Footpaths} from '../src/footpaths.js';
 import {decideCommunityProject} from '../src/settlement-planner.js';
 import {SocialDynamics} from '../src/social-dynamics.js';
 import {loadSpeed} from '../src/carry-poses.js';
+import {createSprings,springRefill,drinkFromSpring,waterAvailability} from '../src/water-cycle.js';
+import {calendarAt,ageResidents} from '../src/world-calendar.js';
 import {initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS} from '../src/construction-stages.js';
 import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS} from '../src/avatar-modes.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,isBlocked} from '../src/spatial-world.js';
@@ -31,6 +33,7 @@ const context=vm.createContext({
   console,Math,MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO,
   initializeBiography,lifeEvent,experienceSkill,makeLifeCard,
   Footpaths,decideCommunityProject,SocialDynamics,loadSpeed,
+  createSprings,springRefill,drinkFromSpring,waterAvailability,calendarAt,ageResidents,
   initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS,
   createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS,
   solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,
@@ -153,4 +156,30 @@ test('MW008-INTEGRATION-004: a real autonomous completed house passes surveyed, 
   assert.ok(house.clearedCount>=0);
   assert.ok(sim.material.logistics.constructionDeliveries>=RECIPES.house.wood,
     'Each material was truly carried to the site');
+});
+
+test('MW009-INTEGRATION-001: thirsty citizen must discover, travel and drink at actual finite spring',()=>{
+  const sim=new Civilization(),agent=sim.agents[0];
+  const spring=sim.springs[0];
+  // The citizen learns the spring by personally approaching it, not from an oracle.
+  agent.x=spring.x+2.1;agent.z=spring.z+2.4;
+  agent.thirst=90;agent.mode='idle';
+  agent.cognition.lastScan=-100;
+  for(let i=0;i<800&&agent.thirst>40;i++)sim.update(.2);
+  assert.ok(agent.cognition.resources['spring:'+spring.id],'Real perception creates individual source knowledge');
+  assert.ok(agent.thirst<40,'They actually drank from the spring at its coordinates');
+  assert.ok(spring.stock<spring.maxStock);
+  assert.ok(agent.memories.some(m=>m.includes('pramene')),'The drink was remembered');
+});
+
+test('MW009-INTEGRATION-002: a year actually ages living residents and adds a causally dated event',()=>{
+  const sim=new Civilization(),person=sim.agents[0];
+  const age=person.profile.age;
+  // Advance chronology at the boundary; movement is NOT claimed to simulate 365 days.
+  sim.nextMeal=365*75;
+  sim.seconds=365*75-.2;
+  sim.update(.2);
+  assert.equal(person.profile.age,age+1);
+  assert.ok(sim.chronicle.some(entry=>entry.title==='Nový rok světa'));
+  assert.ok(person.profile.timeline.some(event=>event.event==='Narozeniny'));
 });
