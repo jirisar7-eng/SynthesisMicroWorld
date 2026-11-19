@@ -335,3 +335,11 @@ body.remote-world .god-flyout summary{font-size:11px}
  .page-map .visitor-panel{width:162px}
  .page-map .material-map-label{gap:3px 6px;font-size:8px}
 }
+
+/* MW-014: reset is always available from the opened camera drawer on phones. */
+.visitor-reset-camera{width:100%;padding:9px 10px;border:1px solid #7d9c80;
+  border-radius:8px;background:#2b4b3b;color:#e7f4e1;font-size:11px;font-weight:700}
+@media(max-width:720px){
+  .page-map .scene-overlay-bottom #btn-reset-camera{display:none}
+  .page-map .scene-overlay-bottom{justify-content:flex-start}
+}
