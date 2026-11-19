@@ -262,3 +262,25 @@ export function groundDropPosition(owner,solids){
   }
   return null;
 }
+
+/** A tent can only be pitched on discovered terrain with enough free floor area.
+ * The citizen selects a nearby practical plot, never erases a tree or boulder.
+ */
+export function chooseCampPlot(knownPlace,solids,height){
+  if(!knownPlace)return null;
+  for(const distance of [0,1.5,2.5,3.5,4.7,6.0]){
+    for(let i=0;i<(distance===0?1:24);i++){
+      const angle=i*Math.PI/12;
+      const x=knownPlace.x+Math.cos(angle)*distance;
+      const z=knownPlace.z+Math.sin(angle)*distance;
+      const r=Math.hypot(x,z);
+      if(r<15||r>31.2||!Number.isFinite(height(x,z))||height(x,z)<.15)continue;
+      if(solids.some(s=>footprintOverlaps(x,z,1.72,1.42,s,.38)))continue;
+      const edges=[height(x-1.72,z),height(x+1.72,z),
+        height(x,z-1.42),height(x,z+1.42)];
+      if(Math.max(...edges)-Math.min(...edges)>.75)continue;
+      return {x:Math.round(x*100)/100,z:Math.round(z*100)/100};
+    }
+  }
+  return null;
+}
