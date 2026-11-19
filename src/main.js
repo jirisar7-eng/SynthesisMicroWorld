@@ -654,7 +654,7 @@ function drawPersonalKnowledgeMap(knowledge, person){
   }
   ctx.beginPath();ctx.arc(xToScreen(0),zToScreen(0),4,0,Math.PI*2);
   ctx.fillStyle='#e8c88c';ctx.fill();
-  ctx.fillStyle='#e8c88c';ctx.font='11px sans-serif';ctx.fillText(centerX?'Druhý ostrov':'Tábor',xToScreen(0)+9,zToScreen(0)-7);
+  ctx.fillStyle='#e8c88c';ctx.font='11px sans-serif';ctx.fillText(centerX?'Druhý ostrov':'Tábor',xToScreen(centerX)+9,zToScreen(0)-7);
   for(const r of knowledge.resources){
     const x=xToScreen(r.x),z=zToScreen(r.z);
     if(x<4||x>w-4||z<4||z>h-4)continue;
