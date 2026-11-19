@@ -126,7 +126,14 @@ class Civilization {
   go(a,purpose,target,reason,resource=null){
     // Interaction occurs at a reachable outer edge, NEVER inside its mesh.
     const requested={x:target.x,z:target.z};
-    const route=planWalk(a,requested,solidFootprints(this));
+    const obstacles=solidFootprints(this);
+    if(purpose==='departCamp'){
+      // Reserve the footprint BEFORE pitching the tent. The builder walks
+      // to its perimeter, so a freshly constructed shelter never traps them.
+      obstacles.push({id:'planned-tent-'+a.id,shape:'box',
+        x:requested.x,z:requested.z,hx:1.72,hz:1.42});
+    }
+    const route=planWalk(a,requested,obstacles);
     if(!route){
       this.idle(a);
       a.reason='Cesta k cíli je neprůchodná. Hledá jinou činnost.';
