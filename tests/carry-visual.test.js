@@ -82,7 +82,7 @@ test('MW-007B-003: dropped goods receive one instanced ground contact shadow dra
   render.groundShadows.getMatrixAt(0,center);
   const position=new THREE.Vector3(),rotation=new THREE.Quaternion(),scale=new THREE.Vector3();
   center.decompose(position,rotation,scale);
-  assert.equal(position.y,2.023);
+  assert.ok(Math.abs(position.y-2.023)<1e-5,'Instanced matrix uses Float32 precision');
   assert.ok(Math.abs(position.x-3)>.4,'Ground pieces settle around container center');
   economy.pickupStorage(person,economy.recoverable().ids);
   render.sync(economy);
