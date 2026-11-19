@@ -17,6 +17,7 @@ on:
       - feature/mw-006-material-life
       - feature/mw-006b-living-settlement
       - feature/mw-006c-natural-stockpiles
+      - deploy/vps-https-002
       - main
 permissions:
   contents: read
