@@ -39,6 +39,14 @@ const status=()=>({
   structures:sim.material.structures.length,food:sim.material.foodCount(),
   water:sim.springs.reduce((n,s)=>n+s.stock,0),
   events:sim.chronicle.length,snapshotAt:lastSavedAt,
+  islands:{count:2,discoveredBy:sim.islands?.discoveredBy.length||0,
+    crossings:sim.islands?.crossings||0,returns:sim.islands?.returns||0,
+    vessels:sim.islands?.vessels.map(v=>({type:v.type,side:v.side}))||[],
+    aquaticPredators:sim.islands?.predators.length||0,
+    predatorAttacks:sim.islands?.attacks||0,fish:sim.islands?.fish||0},
+  occupations:Object.fromEntries([...new Set(sim.agents.filter(a=>a.alive!==false)
+    .map(a=>a.profile?.occupation||'Neurčeno'))].map(role=>[role,
+      sim.agents.filter(a=>a.alive!==false&&a.profile?.occupation===role).length])),
   note:'Separate headless world; browser 3D synchronisation is NOT connected yet'
 });
 const server=http.createServer((req,res)=>{
