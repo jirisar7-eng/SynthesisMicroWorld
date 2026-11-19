@@ -1,3 +1,4 @@
+import {MaterialWorld} from '../src/material-world.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect} from '../src/avatar-modes.js';
@@ -30,4 +31,17 @@ test('MW008-P-003: only documented viewer disguises are accepted',()=>{
   const avatar=createAvatar();
   for(const m of ['god','poor','invisible','observer'])selectPlayerMode(avatar,m);
   assert.throws(()=>selectPlayerMode(avatar,'super-admin'));
+});
+
+test('MW008-P-004: voluntary food gift moves existing item ID from NPC cargo into visitor cargo',()=>{
+  const world=new MaterialWorld(),citizen={id:12,name:'Ema',x:2,z:2};
+  const apple=world.add('apple',1)[0],before=world.countAll();
+  assert.equal(world.pickupStorage(citizen,[apple.id]),true);
+  const recipient={x:3,z:2};
+  const gift=world.giveToVisitor(citizen,recipient);
+  assert.equal(gift.id,apple.id);
+  assert.equal(world.items.find(item=>item.id===apple.id).container,'carry-visitor');
+  assert.equal(world.countAll(),before);
+  assert.equal(world.cargo(citizen).length,0);
+  assert.equal(world.containers.get('carry-visitor').ownerId,'visitor');
 });
