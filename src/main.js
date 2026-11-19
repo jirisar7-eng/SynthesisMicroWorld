@@ -17,7 +17,7 @@ import {fetchExternalWeather} from './external-world-api.js';
 import {createSprings,springRefill,drinkFromSpring,waterAvailability} from './water-cycle.js';
 import {calendarAt,ageResidents} from './world-calendar.js';
 import {WORLD_SAVE_KEY,serializeWorld,restoreWorld} from './world-save.js';
-import {populationDay,livingSummary,isDependent,isLiving} from './generations.js';
+import {populationDay,livingSummary,isDependent,isLiving,populateFounders} from './generations.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot} from './spatial-world.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
@@ -1503,10 +1503,17 @@ class Diorama {
 }
 let selectedAgent=0;
 const sim=new Civilization();
+const thirtyScenario=new URLSearchParams(location.search).get('scenario')==='30';
+const activeSaveKey=thirtyScenario?WORLD_SAVE_KEY+'-30':WORLD_SAVE_KEY;
+if(thirtyScenario){
+  const result=populateFounders(sim,30);
+  sim.addEvent('Dlouhodobý experiment',result.living+
+    ' zakladatelů začíná s nezávislými potřebami a rozhodováním.','⌛');
+}
 let world;
-let initialSaveStatus='Nový svět';
+let initialSaveStatus=thirtyScenario?'Scénář 30 obyvatel':'Nový svět';
 try{
-  const rawSave=window.localStorage.getItem(WORLD_SAVE_KEY);
+  const rawSave=window.localStorage.getItem(activeSaveKey);
   if(rawSave){
     const restored=restoreWorld(sim,rawSave);
     initialSaveStatus='Načtený svět · den '+restored.day;
@@ -1904,7 +1911,7 @@ function saveCurrentWorld(manual=false){
   if(saveDebounce)return;
   saveDebounce=true;
   try{
-    window.localStorage.setItem(WORLD_SAVE_KEY,serializeWorld(sim));
+    window.localStorage.setItem(activeSaveKey,serializeWorld(sim));
     if(el('save-status'))el('save-status').textContent=
       (manual?'Ručně uloženo':'Automaticky uloženo')+
       ' · rok '+calendarAt(sim.day).year+' / den '+sim.day;
