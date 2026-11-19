@@ -25,6 +25,22 @@ The environment features multiple conifer and broadleaf tree shapes, saplings, m
 
 **Acceptance still required:** verify the full-screen layout and touch controls on Android, inspect frame rate, ensure both direct URLs load, and confirm the world continues after switching views. Successful builds alone do not establish visual or functional acceptance.
 
+## MW-005 — Individual perception, personal knowledge and learning
+
+**New Preview milestone:** an agent no longer chooses food or wood by reading the omniscient list of available resources. Decisions use only known sightings and dated reports from other NPCs.
+
+- Each individual has an independent knowledge ledger, explored-cell history, recent decisions, and cause/outcome episodes.
+- Nearby trees and berries become known only when within an **approximate 7.5-world-unit observation radius**. This is simplified proximity perception, not line-of-sight vision.
+- Unknown resources cannot be used as navigation targets. NPCs without a usable remembered source select a target in an unvisited part of their surroundings, physically travel there, and may discover new resources.
+- Two NPCs may exchange up to three memorized resource locations after they have physically met and talked. Recipients see a **hearsay** source; the original observer remains the only owner of direct evidence.
+- Reports retain the original observation timestamp: hearing an old report does not refresh the original inventory. New direct observations override reports. A depleted source is temporarily avoided after a failed visit.
+- The observer overview shows a **personal fog-of-knowledge map**, explored patches, direct sightings (green/cyan), hearsay (amber), the last decision's reason, and up to four recent explainable experience records. Player god powers continue to change environmental conditions without issuing NPC commands.
+- Automated Node tests cover individual-only discovery, sharing provenance, stale information, failure-driven avoidance, exploration without access to hidden resources, and bounded episodic history.
+
+**Known limitations:** no spatial occlusion, hearing distance, real conversational language, sensory uncertainty other than report provenance, persistent savegames, fully deterministic simulation, causal event graph, or long-term reasoning model. The personal map is a 2D inspection visualization and does not conceal the god's 3D overview of the world. The existing limited six-agent simulation still cannot autonomously create a multi-generation town.
+
+**Acceptance:** GitHub CI and Vercel build verify syntax, modules and pure logic. Run-time rendering, spatial learning progression, NPC survival and performance on target Android devices require explicit acceptance separately. Production and `main` are unchanged.
+
 ## Development
 
 ```bash
