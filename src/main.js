@@ -137,7 +137,7 @@ class Civilization {
     this.go(b,'meet',{x:x+.45,z},'Přijal pozvání od '+a.name+' ke společnému rozhovoru.');
   }
   seekConversation(a){
-    const candidates=this.agents.filter(b=>b.id!==a.id && b.mode==='idle' && b.socialNeed>=38 && b.energy>23 && b.hunger<72);
+    const candidates=this.agents.filter(b=>b.id!==a.id && isLiving(b)&&!isDependent(b) && b.mode==='idle' && b.socialNeed>=38 && b.energy>23 && b.hunger<72);
     if(!candidates.length)return false;
     const b=candidates.sort((x,y)=>(y.socialNeed+(a.relationships[y.id]||0)*.12)-(x.socialNeed+(a.relationships[x.id]||0)*.12))[0];
     this.beginConversation(a,b);return true;
@@ -314,13 +314,14 @@ class Civilization {
     // and personally explored places, never from a hardcoded list.
     if(!this.construction){
       const knownSites=a.cognition.visited;
-      const mood=this.agents.reduce((n,p)=>n+p.mood,0)/this.agents.length;
+      const adults=this.agents.filter(p=>isLiving(p)&&!isDependent(p));
+      const mood=adults.length?adults.reduce((n,p)=>n+p.mood,0)/adults.length:50;
       const proposal=decideCommunityProject(this.material,{
-        population:this.agents.length,averageMood:mood,
+        population:this.agents.filter(isLiving).length,averageMood:mood,
         buildings:this.material.structures,height:terrainHeight,
         paths:this.paths,known:knownSites,
         // Do not place a new building over anyone who is standing there.
-        obstacles:[...solidFootprints(this),...this.agents.map(person=>({
+        obstacles:[...solidFootprints(this),...this.agents.filter(isLiving).map(person=>({
           id:'actor-'+person.id,shape:'circle',x:person.x,z:person.z,r:.29
         }))]
       });
@@ -905,8 +906,17 @@ class Civilization {
           this.agents[event.id].name+' očekává potomka.','✧');
         else if(event.kind==='birth')this.addEvent('Narození dítěte',
           'Narodil se '+event.name+'. Rodina má vlastní historii a skutečné příbuzenské vztahy.','✧');
-        else if(event.kind==='death')this.addEvent('Úmrtí obyvatele',
-          event.name+' zemřel; jeho ID, rodokmen a minulost zůstávají v dějinách.','⌛');
+        else if(event.kind==='death'){
+          const person=this.agents[event.id];
+          this.material.dropCargo(person,'Pozůstalost',groundDropPosition(person,solidFootprints(this)));
+          person.carry=0;person.carryType=null;
+          if(this.construction?.agentId===person.id){
+            const successor=this.agents.find(p=>isLiving(p)&&!isDependent(p)&&p.id!==person.id);
+            if(successor)this.construction.agentId=successor.id;
+          }
+          this.addEvent('Úmrtí obyvatele',
+            event.name+' zemřel; jeho ID, rodokmen a minulost zůstávají v dějinách.','⌛');
+        }
       }
       for(const changed of aged){
         const child=this.agents[changed.id];
@@ -1643,7 +1653,8 @@ function renderMaterialLedger(){
 function renderLifePage(){
   if(!document.body.classList.contains('page-people'))return;
   const list=el('citizen-list');
-  if(!list.dataset.ready){
+  if(list.children.length!==sim.agents.length){
+    list.replaceChildren();
     list.dataset.ready='yes';
     for(const person of sim.agents){
       const button=document.createElement('button');button.type='button';
@@ -1651,7 +1662,7 @@ function renderLifePage(){
       const icon=document.createElement('span');icon.className='avatar';icon.textContent=person.name[0];
       const caption=document.createElement('span');caption.className='citizen-option-label';
       const name=document.createElement('strong');name.textContent=person.profile.fullName;
-      const role=document.createElement('small');role.textContent=person.profile.origin;
+      const role=document.createElement('small');role.textContent=!isLiving(person)?'Zemřel · záznam zachován':isDependent(person)?'Dítě · potřebuje péči':person.profile.origin;
       caption.append(name,role);button.append(icon,caption);
       button.addEventListener('click',()=>{chooseAgent(person.id);renderLifePage();});
       list.append(button);
