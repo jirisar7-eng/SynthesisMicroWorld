@@ -377,3 +377,36 @@ body.remote-world .god-flyout summary{font-size:11px}
   }
 }
 #mw-render-fps[hidden]{display:none!important}
+
+/* MW-018: only refine existing mobile camera framing and HUD.
+ * The temporary FPS counter now fits between the existing two top badges.
+ * It never blocks touch controls or covers the live-world label. */
+.scene-overlay-top{isolation:isolate}
+.scene-overlay-top .mw-performance-pill{
+  position:absolute;left:50%;top:0;transform:translateX(-50%);
+  display:block;white-space:nowrap;pointer-events:none;
+  font:700 10px system-ui,sans-serif;line-height:1.2;
+  padding:10px 8px;border-radius:9px;
+  background:rgba(18,44,34,.93);border:1px solid #83a99966;
+  color:#ebf6dd;font-variant-numeric:tabular-nums;
+}
+.scene-overlay-top .mw-performance-pill[hidden]{display:none!important}
+@media(max-width:720px){
+  .page-map .mobile-metrics{
+    left:9px;right:9px;bottom:135px;max-width:none;
+    flex-wrap:nowrap;justify-content:flex-start;gap:5px;
+  }
+  .page-map .mobile-metrics span{
+    padding:6px 7px;font-size:9px;white-space:nowrap;
+    -webkit-backdrop-filter:none;backdrop-filter:none;
+  }
+  .scene-overlay-top .mw-performance-pill{
+    font-size:9px;padding:11px 5px;
+  }
+}
+@media(max-width:370px){
+  .scene-overlay-top .mw-performance-pill{
+    font-size:8px;padding:11px 3px;
+  }
+  .page-map .mobile-metrics span{padding:5px 4px;font-size:8px}
+}
