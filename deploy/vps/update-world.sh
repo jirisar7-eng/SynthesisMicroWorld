@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MW-007 / MUTATING: only upgrades the isolated MicroWorld Docker service.
+# MW-008 / MUTATING: only upgrades the isolated MicroWorld Docker service.
 # Keeps existing microworld.tatovacesta.cz Caddyfile, DNS, mail and other containers unchanged.
 set -euo pipefail
 if [[ "${1:-}" != "--apply" ]]; then
@@ -11,7 +11,7 @@ if [[ "$(hostname -s)" != "tatovacesta" || "$(id -un)" != "uadmin" ]]; then
   echo 'BLOCKED: must run as uadmin on tatovacesta.' >&2; exit 2
 fi
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-if [[ "$(git branch --show-current)" != "feature/mw-007-real-space" ]]; then
+if [[ "$(git branch --show-current)" != "feature/mw-008-construction-avatar" ]]; then
   echo 'BLOCKED: expected reviewed feature/mw-007-real-space branch.' >&2; exit 2
 fi
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -43,7 +43,7 @@ STACK=(docker compose --project-name microworld_private
 if [[ "$(curl -fsS --max-time 4 http://127.0.0.1:18583/healthz)" != ok ]]; then
   echo 'BLOCKED: original local HTTP baseline is not healthy.' >&2; exit 2
 fi
-echo "MW007_UPGRADE_BEGIN sha=$SHA previous=$PREVIOUS"
+echo "MW008_UPGRADE_BEGIN sha=$SHA previous=$PREVIOUS"
 # Build a new immutable local image while the previous container keeps serving traffic.
 "${STACK[@]}" build web
 upgraded=0
