@@ -20,6 +20,7 @@
     <button type="button" data-visitor-move="right" aria-label="Otočit doprava">↷</button>
   </div>
   <small id="visitor-status">Vyber podobu · šipky / WASD nebo tlačítka</small>
+<div class="mw-save-controls"><button type="button" id="btn-save-world">Uložit svět</button><small id="save-status">Lokální svět</small></div>
 </div>
 <div class="map-agent-peek" aria-live="polite"><span class="map-peek-label">SLEDOVANÝ OBYVATEL</span><strong id="map-npc-name">Adam</strong><span id="map-npc-action">Zkoumá okolí</span><span id="map-npc-reason">Rozhlíží se po novém světě.</span><span class="map-knowledge-count" id="map-knowledge-count">0 osobně poznaných zdrojů</span></div><div class="notice" id="notice" role="status">Svět se probouzí. Obyvatelé sami hledají první zdroje.</div></section>
 <aside class="dashboard"><div class="dashboard-scroll"><div class="panel-heading"><div><span class="eyebrow">PŘEHLED SVĚTA</span><h1>První osada</h1></div><span class="day-badge" id="day">Den 1</span></div><div class="metrics"><div class="metric"><span class="metric-icon gold">◈</span><div><small>OBYVATELÉ</small><strong id="people">6</strong></div></div><div class="metric"><span class="metric-icon green">♣</span><div><small>DŘEVO</small><strong id="wood">0</strong></div></div><div class="metric"><span class="metric-icon amber">◉</span><div><small>POTRAVINY</small><strong id="food">14</strong></div></div></div><div class="chapter"><div class="chapter-head"><span class="eyebrow">AUTONOMNÍ VÝVOJ</span><span class="tag" id="stage-tag">PRŮZKUM</span></div><h2 id="stage-title">Hledání místa k životu</h2><p id="stage-description">Obyvatelé se rozhlížejí, sbírají suroviny a rozhodují, co jejich nová osada potřebuje.</p><div class="progress-track"><div id="build-progress" class="progress-fill"></div></div><div class="progress-label"><span id="progress-name">Materiál na první přístřešek</span><strong id="progress-number">0 / 12</strong></div></div><section class="world-ledger" aria-label="Fyzické zásoby osady">
@@ -38,6 +39,7 @@
 <div class="life-inspector-head"><span class="eyebrow">OSOBNOST A POTŘEBY</span><span id="npc-personality" class="life-trait">Zvídavý</span></div>
 <div class="needs-grid">
 <div class="need"><span>Hlad</span><strong id="npc-hunger">0 %</strong><div class="need-track"><div id="need-hunger"></div></div></div>
+<div class="need"><span>Žízeň</span><strong id="npc-thirst">0 %</strong><div class="need-track"><div id="need-thirst"></div></div></div>
 <div class="need"><span>Samota</span><strong id="npc-social">0 %</strong><div class="need-track"><div id="need-social"></div></div></div>
 <div class="need"><span>Energie</span><strong id="npc-energy">0 %</strong><div class="need-track"><div id="need-energy"></div></div></div>
 <div class="need"><span>Nálada</span><strong id="npc-mood">0 %</strong><div class="need-track"><div id="need-mood"></div></div></div></div>
