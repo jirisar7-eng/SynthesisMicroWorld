@@ -28,7 +28,7 @@ function availableIn(world,container,type,count){
   return world.material.items.filter(i=>i.container===container&&i.type===type&&world.material.isAvailable(i)).slice(0,count);
 }
 function availableVessel(world,side){
-  return world.islands.vessels.find(v=>v.side===side&&!v.inUse);
+  return world.islands.vessels.find(v=>v.side===side&&v.inUse===null);
 }
 function localSources(world,type){
   return ({berry:world.berries,tree:world.trees,stone:world.stones,apple:world.apples,spring:world.springs})[type]
@@ -174,6 +174,12 @@ export function coastalArrival(world,agent){
       plan.stoneIds=ids;agent.carry=ids.length;agent.carryType='stone';
       sendToPier(world,agent,'deliverVesselStone');return true;
     }
+    // Release previously reserved wood if the stone leg cannot be completed.
+    for(const id of plan.stoneIds.concat(plan.woodIds)){
+      const item=world.material.items.find(i=>i.id===id);
+      if(item&&item.reservedFor==='vessel-'+agent.id)delete item.reservedFor;
+    }
+    agent.vesselPlan=null;
     world.idle(agent);return true;
   }
   if(purpose==='deliverVesselStone'&&plan){
@@ -189,7 +195,7 @@ export function coastalArrival(world,agent){
   if(purpose==='boardVoyage'){
     const side=agent.resource?.side;
     if(side!==islandOf(agent)){world.idle(agent);return true;}
-    let vessel=world.islands.vessels.find(v=>v.id===agent.resource?.vesselId&&v.side===side&&!v.inUse);
+    let vessel=world.islands.vessels.find(v=>v.id===agent.resource?.vesselId&&v.side===side&&v.inUse===null);
     if(!vessel&&agent.resource?.vesselId!==null){world.idle(agent);return true;}
     if(!vessel&&agent.energy<82){world.idle(agent);return true;}
     const from=side==='home'?HOME_PIER:FAR_PIER;
@@ -237,6 +243,10 @@ export function coastalComplete(world,agent){
       world.addEvent('Postavené plavidlo',agent.name+' sestavil '+(plan.type==='boat'?'loď':'vor')+
         ' ze skutečných zásob.','⚒');
     }
+    for(const id of ids){
+      const item=world.material.items.find(i=>i.id===id);
+      if(item&&item.reservedFor==='vessel-'+agent.id)delete item.reservedFor;
+    }
     agent.vesselPlan=null;world.syncStock();world.idle(agent);return true;
   }
   return false;
@@ -251,7 +261,7 @@ export function advanceVoyage(world,agent,dt){
   route.progress=clamp(route.progress+speed*dt/length,0,1);
   agent.x=route.from.x+(route.to.x-route.from.x)*route.progress;
   agent.z=route.from.z+(route.to.z-route.from.z)*route.progress;
-  agent.energy=clamp(agent.energy-dt*(vessel ? (vessel.type==='boat'?.11:.25) : .65),0,100);
+  agent.energy=clamp(agent.energy-dt*(vessel ? (vessel.type==='boat' ? .11 : .25) : .65),0,100);
   if(vessel){vessel.x=agent.x;vessel.z=agent.z;}
   if(!vessel&&agent.energy<=0){
     agent.health=0;agent.mode='distress';agent.reason='Vyčerpaný v moři čeká na pomoc.';
@@ -264,7 +274,7 @@ export function advanceVoyage(world,agent,dt){
       agent.profile.settlement='Druhý ostrov';
     }else{world.islands.returns++;agent.profile.settlement='První osada';}
     experienceSkill(agent,'exploration',3);
-    agent.profile.skills.navigation=(agent.profile.skills.navigation||0)+(vessel?4:2);
+    agent.profile.skills.navigation=clamp((agent.profile.skills.navigation||0)+(vessel?4:2),0,100);
     if(route.fromSide==='home'&&vessel?.type==='raft'&&
       agent.profile.skills.wood>=6&&agent.profile.skills.craft>=4){
       knowledge(agent).technologies.boat={origin:'invented',day:world.day,by:agent.id};
