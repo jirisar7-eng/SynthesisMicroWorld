@@ -15,6 +15,14 @@
     {
       "source": "/prehled/",
       "destination": "/index.html"
+    },
+    {
+      "source": "/lide",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/lide/",
+      "destination": "/index.html"
     }
   ]
 }
