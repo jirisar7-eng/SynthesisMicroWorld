@@ -54,6 +54,14 @@ function pieceFor(item){
     const stem=new THREE.Mesh(new THREE.CylinderGeometry(.016,.022,.13,5),resources.twig);
     stem.position.y=.17;
     group.add(fruit,stem);shape=group;
+  }else if(item.type==='water'){
+    const bottle=new THREE.Group();
+    const glass=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,.34,10),
+      new THREE.MeshStandardMaterial({color:'#83c7db',transparent:true,opacity:.7,
+        metalness:.05,roughness:.12}));
+    const cap=new THREE.Mesh(new THREE.CylinderGeometry(.075,.075,.055,10),
+      resources.stone);
+    cap.position.y=.19;bottle.add(glass,cap);shape=bottle;
   }else if(item.type==='seed'){
     shape=new THREE.Mesh(new THREE.DodecahedronGeometry(.095,0),resources.seed);
     shape.scale.y=.58;
