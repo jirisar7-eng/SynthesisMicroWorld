@@ -14,6 +14,16 @@ const baseline=sim.material.countAll(),start=process.hrtime.bigint();
 const endSeconds=days*75;
 while(sim.seconds<endSeconds){
   sim.update(Math.min(step,endSeconds-sim.seconds));
+  if([2,5,10,20,30].includes(sim.day)&&Math.abs(sim.seconds%75)<step){
+    const persons=sim.agents.filter(a=>a.alive!==false);
+    const sample=persons.slice(0,4).map(a=>({id:a.id,
+      x:Math.round(a.x),z:Math.round(a.z),h:Math.round(a.hunger),
+      t:Math.round(a.thirst),hp:Math.round(a.health),
+      mode:a.mode,task:a.purpose,reason:a.reason,
+      waterKnown:Object.values(a.cognition.resources).filter(x=>x.type==='spring').length}));
+    console.log('MW_LIFE_DIAGNOSTIC',JSON.stringify({day:sim.day,
+      alive:persons.length,food:sim.food,water:sim.springs.map(x=>x.stock),sample}));
+  }
   if(sim.day%50===0&&Math.abs(sim.seconds%75)<step){
     const summary=livingSummary(sim.agents);
     console.log('MW_LIFE_PROGRESS',JSON.stringify({day:sim.day,summary,
