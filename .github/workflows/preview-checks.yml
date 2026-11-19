@@ -7,6 +7,7 @@ on:
       - feature/mw-006-material-life
       - feature/mw-006b-living-settlement
       - feature/mw-006c-natural-stockpiles
+      - feature/mw-006d-carry-terrain-assets
   pull_request:
     branches:
       - feature/mw-001-first-life
@@ -14,6 +15,7 @@ on:
       - feature/mw-005-knowledge
       - feature/mw-006-material-life
       - feature/mw-006b-living-settlement
+      - feature/mw-006c-natural-stockpiles
       - main
 permissions:
   contents: read
