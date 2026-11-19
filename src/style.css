@@ -272,3 +272,12 @@
   .visitor-panel{bottom:54px;width:min(210px,49vw)}
   .visitor-controls button{min-height:37px}
 }
+
+/* MW-009: compact unobtrusive save status in the visitor panel on mobile. */
+.mw-save-controls{display:flex;align-items:center;justify-content:space-between;
+  gap:8px;flex-wrap:wrap;margin-top:2px;border-top:1px solid #88a98947;padding-top:8px}
+.mw-save-controls button{min-height:37px;border:1px solid #79997c;
+  color:#eef9eb;background:#345d40;border-radius:7px;padding:6px 12px;
+  font-size:12px;font-weight:700;cursor:pointer}
+.mw-save-controls button:active{background:#678b55}
+.mw-save-controls small{font-size:10px;color:#bfdfbc;flex:1;min-width:72px}
