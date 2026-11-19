@@ -1,0 +1,80 @@
+name: MW-013 Mobile 3D Failure Diagnostics
+on:
+  push:
+    branches:
+      - feature/mw-013-3d-error-diagnostics
+  pull_request:
+    paths:
+      - 'src/main.js'
+      - 'src/scene-diagnostics.js'
+      - 'tests/scene-diagnostics.test.js'
+      - '.github/workflows/mw013-3d-diagnostics.yml'
+permissions:
+  contents: read
+jobs:
+  browser-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: Install dependencies without external asset sync
+        run: npm install --no-audit --no-fund --ignore-scripts --no-package-lock
+      - name: Check safe web-only VPS apply script syntax
+        run: bash -n deploy/vps/mw011/web-only-diagnostics.sh
+      - name: All simulation and 3D error classification tests
+        run: npm test
+      - name: Build production viewer bundle
+        env:
+          SKIP_POLYHAVEN_ASSETS: "1"
+        run: npm run build -- --target es2022
+      - name: Check renderer error reporting in generated bundle
+        run: |
+          if ! grep -rlF 'MW3D-RUNTIME' dist/assets/ >/dev/null; then
+            echo 'Runtime diagnostics are missing from the bundle';exit 1
+          fi
+          if grep -rlF '3D vykreslování není dostupné. Ověř podporu WebGL' dist/assets/; then
+            echo 'Misleading WebGL-only error reporting was retained';exit 1
+          fi
+          echo 'MW013_3D_DIAGNOSTICS_PASS'
+
+      - name: Chromium real 3D renderer with persistent 30-NPC world
+        env:
+          MW011_RELEASE: mw013-ci
+          MW011_HOST_PORT: "18585"
+        run: |
+          set -euo pipefail
+          stack=(docker compose -f deploy/vps/mw011/compose.yaml)
+          "${stack[@]}" build sim web
+          trap '"${stack[@]}" down >/dev/null 2>&1 || true' EXIT
+          "${stack[@]}" up -d --no-build sim web
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 3 http://127.0.0.1:18585/healthz >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:18585/api/world -o /dev/null
+          if ! command -v google-chrome >/dev/null; then
+            echo 'BROWSER_DIAGNOSTIC_UNAVAILABLE: google-chrome not on CI host'
+            exit 0
+          fi
+          timeout 95s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage \
+            --enable-unsafe-swiftshader --use-angle=swiftshader \
+            --virtual-time-budget=4000 --dump-dom \
+            http://127.0.0.1:18585/svet/ > /tmp/mw013-scene.html 2>/tmp/mw013-chrome.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,sys
+          html=Path('/tmp/mw013-scene.html').read_text(errors='replace')
+          detail=re.search(r'MW3D-(?:RUNTIME|WEBGL).*?(?=</code>)',html,re.S)
+          if detail:
+              print('BROWSER_RENDER_DIAGNOSTIC:',detail.group()[:600])
+              sys.exit(1)
+          if not re.search(r'<div id="scene">\s*<canvas',html):
+              print('BROWSER_DIAGNOSTIC: no scene canvas after page startup')
+              sys.exit(1)
+          print('MW013_HEADLESS_RENDER_PASS: 3D canvas initialized from persistent 30-person server')
+          PY

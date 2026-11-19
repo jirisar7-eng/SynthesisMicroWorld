@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {describeSceneFailure} from './scene-diagnostics.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
 import {MaterialWorld, RECIPES, FOOD_TYPES, ITEM_INFO} from './material-world.js';
@@ -29,16 +30,23 @@ import {Civilization,terrainHeight,clamp,dist,rand,rng,seeded,points,names,color
 
 const el = id => document.getElementById(id);
 class Diorama {
-  constructor(container,sim){
+  constructor(container,sim,selection={}){
+    // The renderer lives outside launchMicroWorld's lexical scope: selection
+    // MUST be passed explicitly, never read as a nonexistent global.
+    this.getSelectedAgent=selection.getSelectedAgent||(()=>0);
+    this.chooseAgent=selection.chooseAgent||(()=>{});
+    Diorama.lastStage='webgl';
     this.sim=sim;this.container=container;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#c8dfdd');this.scene.fog=new THREE.Fog('#c8dfdd',65,205);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.7));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.43;
     container.appendChild(this.renderer.domElement);
+    Diorama.lastStage='camera';
     this.camera=new THREE.PerspectiveCamera(47,1,.1,250);this.resetCamera();
     this.controls=new OrbitControls(this.camera,this.renderer.domElement);this.controls.enableDamping=true;this.controls.dampingFactor=.07;this.controls.minDistance=13;this.controls.maxDistance=175;this.controls.maxPolarAngle=Math.PI*.46;this.controls.minPolarAngle=.22;this.controls.target.set(0,1.5,0);this.controls.enablePan=true;this.controls.screenSpacePanning=true;this.controls.maxTargetRadius=115;
     this.ambient=new THREE.HemisphereLight('#edffff','#768b68',2.4);this.scene.add(this.ambient);
     this.clearSky=new THREE.Color('#c8dfdd');this.nightSky=new THREE.Color('#627c84');this.rainSky=new THREE.Color('#869a9b');
     const sun=new THREE.DirectionalLight('#ffeed6',3.5);sun.position.set(-20,43,24);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-49;sun.shadow.camera.right=49;sun.shadow.camera.top=49;sun.shadow.camera.bottom=-49;sun.shadow.camera.near=1;sun.shadow.camera.far=110;sun.shadow.bias=-.00022;this.scene.add(sun);this.sun=sun;
+    Diorama.lastStage='terrain';
     const groundGeo=new THREE.PlaneGeometry(100,100,148,148);groundGeo.rotateX(-Math.PI/2);
     const pos=groundGeo.attributes.position,vertices=[];
     const light=new THREE.Color('#a4c68b'),dark=new THREE.Color('#587953'),sandy=new THREE.Color('#c9b68d'),earth=new THREE.Color('#8b795e');
@@ -70,6 +78,7 @@ class Diorama {
     const farLand=new THREE.Mesh(farGeo,land.material);
     farLand.position.x=86;farLand.receiveShadow=true;this.scene.add(farLand);
     const water=new THREE.Mesh(new THREE.PlaneGeometry(270,270),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
+    Diorama.lastStage='resources';
     this.addCamp();
     this.treeModels=[];this.berryModels=[];this.saplingModels=[];
     this.boulderModels=[];this.fallenLogModels=[];
@@ -78,9 +87,11 @@ class Diorama {
     createTrampledCamp(this.scene,terrainHeight);
     createGroundClutter(this.scene,terrainHeight,this.sim.trees);
     this.addRocksAndGrass();this.addDeposits();this.addRain();
+    Diorama.lastStage='physical-world';
     this.pathVisuals=new FootpathRenderer(this.scene,terrainHeight);
     this.inventoryVisuals=new MaterialRenderer(this.scene,terrainHeight);
     this.buildingVisuals=new BuildingRenderer(this.scene,terrainHeight);
+    Diorama.lastStage='citizens';
     this.people=[];this.pickables=[];
     for(const agent of sim.agents){const group=this.makePerson(agent);this.scene.add(group);this.people.push(group);}
     this.inventoryVisuals.bindCarriers(this.people);
@@ -92,8 +103,9 @@ class Diorama {
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
     const canvas=this.renderer.domElement;let start={x:0,y:0};
     canvas.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
-    canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];if(hit){chooseAgent(hit.object.userData.agentId);}});
+    canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];if(hit){this.chooseAgent(hit.object.userData.agentId);}});
     this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(container);this.resize();
+    Diorama.lastStage='ready';
   }
   addDeposits(){
     // Resource nodes: trees are handled by the existing forest, but rocks and apples must
@@ -494,7 +506,7 @@ class Diorama {
       g.userData.head.rotation.y=a.purpose==='talking'?Math.sin(this.timer*2+i)*.25:Math.sin(this.timer*.8+i)*.07;
       g.userData.hair.rotation.y=g.userData.head.rotation.y;
       g.userData.bubble.visible=a.purpose==='talking';
-      g.userData.halo.visible=i===selectedAgent;
+      g.userData.halo.visible=i===this.getSelectedAgent();
       const carrying=g.userData.carryClass!=='empty';
       g.userData.cargoAnchor.rotation.x=carrying?Math.sin(this.timer*8+i)*.015:0;
     });
@@ -1049,8 +1061,42 @@ el('btn-info').addEventListener('click',()=>el('help-modal').classList.remove('h
 el('btn-close-modal').addEventListener('click',()=>el('help-modal').classList.add('hidden'));
 el('help-modal').addEventListener('click',e=>{if(e.target===el('help-modal'))el('help-modal').classList.add('hidden');});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')el('help-modal').classList.add('hidden');if(e.code==='Space' && e.target.tagName!=='BUTTON'){e.preventDefault();el('btn-pause').click();}});
+/**
+ * Show the real error on mobile instead of falsely blaming WebGL for every
+ * exception in the rendering or world-model initialization.
+ * The report contains no auth header, save data or device fingerprint.
+ */
+function showSceneFailure(error,stage){
+  const result=describeSceneFailure(error,stage);
+  console.error('MicroWorld 3D failed',result.code,result.diagnostic,error);
+  const root=el('scene');
+  if(!root)return;
+  root.replaceChildren();
+  const panel=document.createElement('section');
+  panel.setAttribute('role','alert');
+  panel.style.cssText='box-sizing:border-box;display:flex;flex-direction:column;gap:14px;justify-content:center;align-items:center;min-height:100%;padding:28px 20px;text-align:center;background:#1f3028;color:#eff6e8';
+  const header=document.createElement('strong');
+  header.textContent=result.title;
+  header.style.fontSize='19px';
+  const details=document.createElement('code');
+  details.textContent=result.code+' · '+result.diagnostic;
+  details.style.cssText='max-width:100%;box-sizing:border-box;overflow-wrap:anywhere;white-space:normal;font-size:12px;line-height:1.6;padding:12px;border:1px solid #6c9680;border-radius:9px;color:#b8d9bb';
+  const hint=document.createElement('p');
+  hint.textContent=result.hint;
+  const retry=document.createElement('button');
+  retry.textContent='Zkusit znovu';
+  retry.type='button';
+  retry.style.cssText='padding:12px 18px;border:1px solid #95ba9e;border-radius:9px;background:#294d3a;color:white';
+  retry.addEventListener('click',()=>location.reload());
+  panel.append(header,details,hint,retry);
+  root.append(panel);
+}
+
 try{
-  world=new Diorama(el('scene'),sim);
+  world=new Diorama(el('scene'),sim,{
+    getSelectedAgent:()=>selectedAgent,
+    chooseAgent:index=>chooseAgent(index)
+  });
   let viewingFar=false;
   el('btn-far-island')?.addEventListener('click',()=>{
     viewingFar=!viewingFar;
@@ -1063,19 +1109,22 @@ try{
   });
   const clock=new THREE.Clock();let uiTime=0;
   function frame(){
-    requestAnimationFrame(frame);
-    const delta=Math.min(clock.getDelta(),.06);
-    const actual=paused?0:delta*speeds[speedIndex];
-    if(document.body.classList.contains('page-map')&&sim.avatar.mode!=='observer')
-      advanceAvatar(sim.avatar,delta,indexSolids(solidFootprints(sim)));
-    if(actual&&!remoteWorldMode)sim.update(actual);
-    if(document.body.classList.contains('page-map'))world.update(delta);
-    uiTime+=delta;if(uiTime>.28){renderUI();uiTime=0;}
+    try{
+      const delta=Math.min(clock.getDelta(),.06);
+      const actual=paused?0:delta*speeds[speedIndex];
+      if(document.body.classList.contains('page-map')&&sim.avatar.mode!=='observer')
+        advanceAvatar(sim.avatar,delta,indexSolids(solidFootprints(sim)));
+      if(actual&&!remoteWorldMode)sim.update(actual);
+      if(document.body.classList.contains('page-map'))world.update(delta);
+      uiTime+=delta;if(uiTime>.28){renderUI();uiTime=0;}
+      requestAnimationFrame(frame);
+    }catch(error){
+      showSceneFailure(error,'frame');
+    }
   }
   events();renderUI();frame();
 }catch(error){
-  console.error('MicroWorld rendering failed',error);
-  el('scene').innerHTML='<div style="display:grid;place-items:center;height:100%;background:#1f3028;color:#fff;padding:30px;text-align:center">3D vykreslování není dostupné. Ověř podporu WebGL v prohlížeči.</div>';
+  showSceneFailure(error,Diorama.lastStage||'initialization');
   events();renderUI();
 }
 }
