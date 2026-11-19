@@ -497,6 +497,7 @@ class Civilization {
       const project=this.construction;
       if(project){
         const n=this.material.depositProjectLoad(a,project.id);
+        project.delivered=this.material.projects.get(project.id)?.delivered||0;
         project.progress=phaseProgress(project);
         a.carry=0;a.carryType=null;
         this.addEvent('Stavební materiál dopraven',
@@ -766,6 +767,10 @@ class Civilization {
       const completed={...this.construction},type=completed.type;
       if(!this.material.finalizeProject(completed.id)){this.idle(a);return;}
       const building=this.material.addStructure(type,completed.x,completed.z,a.id,this.seconds);
+      building.stages=completed.stageHistory.map(stage=>({...stage}));
+      building.groundPrepared=completed.surveyed&&completed.graded&&completed.clearables.length===0;
+      building.clearedCount=completed.cleared;
+      building.scaffoldingDismantled=true;
       if(completed.assistantId!==undefined){
         const partner=this.agents[completed.assistantId];
         if(partner)lifeEvent(partner,this.day,'Společně dokončil '+RECIPES[type].name,
@@ -869,7 +874,11 @@ class Civilization {
       }
       else if(a.mode==='work'){
         const wetWork=this.weather.kind==='rain' && ['harvest','forage','building'].includes(a.purpose);
-        a.workRemaining-=dt*(wetWork?.78:1);
+        const helpers=this.construction&&a.purpose==='building'?
+          this.agents.filter(p=>p.purpose==='assisting').length:0;
+        const helpCredit=this.construction&&a.purpose==='building'?
+          (this.construction.extraProgress||0)*.08:0;
+        a.workRemaining-=dt*(wetWork?.78:1)*(1+helpers*.18+helpCredit);
         a.energy=clamp(a.energy-dt*.55,0,100);
         if(a.purpose==='building'&&this.construction){
           const helpers=this.agents.filter(p=>p.purpose==='assisting').length;
