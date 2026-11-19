@@ -32,6 +32,12 @@ const results={
   trail:sim.paths.summary(),water:sim.springs.reduce((n,s)=>n+s.stock,0),
   year:calendarAt(sim.day).year,events:sim.chronicle.length,
   materialTransport:sim.material.logistics.transported,
+  maritime:{islands:2,discoveredBy:sim.islands.discoveredBy.length,
+    crossings:sim.islands.crossings,returns:sim.islands.returns,
+    vessels:sim.islands.vessels.length,predatorAttacks:sim.islands.attacks,
+    fish:sim.islands.fish},
+  professions:[...new Set(sim.agents.filter(a=>a.alive!==false)
+    .map(a=>a.profile.occupation))].sort(),
   runtimeSeconds:Number((Number(process.hrtime.bigint()-start)/1e9).toFixed(2))
 };
 console.log('MW_LIFE_001_REPORT',JSON.stringify(results));
