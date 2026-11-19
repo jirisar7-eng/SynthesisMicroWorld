@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {RECIPES,ITEM_INFO} from './material-world.js';
+import {stockSlotGroup} from './stockpile-layout.js';
 
 const material=(hex,roughness=.92)=>new THREE.MeshStandardMaterial({color:hex,roughness});
 const resources={
@@ -143,7 +144,8 @@ export class MaterialRenderer {
     const offsets=new Map();
     // Exact accounting: 1 object in data -> 1 visible piece (LOD may vary later).
     for(const item of economy.items){
-      const key=item.container+':'+item.type;
+      const container=economy.containers.get(item.container);
+      const key=item.container+':'+stockSlotGroup(item,container);
       const ordinal=offsets.get(key)||0;
       offsets.set(key,ordinal+1);
       let mesh=this.itemMeshes.get(item.id);
