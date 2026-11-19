@@ -32,15 +32,7 @@ jobs:
         run: |
           docker compose -f deploy/vps/mw011/compose.yaml config -q
           docker compose -f deploy/vps/mw011/compose.yaml config --format json |
-            python3 -c 'import json,sys
-p=json.load(sys.stdin)
-assert p["name"]=="microworld011_preview"
-assert set(p["services"])=={"sim","web"}
-assert len(p["services"]["web"]["ports"])==1
-port=p["services"]["web"]["ports"][0]
-assert port["host_ip"]=="127.0.0.1" and int(port["published"])==18585
-assert not p["services"]["sim"].get("ports")
-print("MW012_LOOPBACK_ONLY=PASS")'
+            python3 -c 'import json,sys; p=json.load(sys.stdin); w=p["services"]["web"]; port=w["ports"][0]; assert p["name"]=="microworld011_preview"; assert set(p["services"])=={"sim","web"}; assert len(w["ports"])==1; assert port["host_ip"]=="127.0.0.1" and int(port["published"])==18585; assert not p["services"]["sim"].get("ports"); print("MW012_LOOPBACK_ONLY=PASS")'
       - name: Build exact frontend and isolated Node server images
         env:
           MW011_RELEASE: ci
