@@ -33,11 +33,15 @@ jobs:
             grep -F '127.0.0.1'
       - name: Build real static Docker image and run simulation tests
         run: docker build --tag local/microworld:vps-ci --file deploy/vps/Dockerfile .
-      - name: Smoke test local-only HTTP routes
+      - name: Smoke test exact VPS Compose topology (internal bridge / loopback)
+        env:
+          MICROWORLD_RELEASE: vps-ci
+          MICROWORLD_PORT: "18583"
         run: |
           set -euo pipefail
-          docker run --rm --detach --name microworld-vps-ci --publish 127.0.0.1:18583:8080 local/microworld:vps-ci
-          trap 'docker rm -f microworld-vps-ci >/dev/null 2>&1 || true' EXIT
+          stack=(docker compose --project-name microworld_private -f deploy/vps/compose.yaml)
+          "${stack[@]}" up -d --no-build --no-deps web
+          trap '"${stack[@]}" down >/dev/null 2>&1 || true' EXIT
           for attempt in $(seq 1 20); do
             if curl --fail --silent http://127.0.0.1:18583/healthz >/dev/null; then break; fi
             sleep 2
@@ -45,4 +49,5 @@ jobs:
           for route in svet prehled lide; do
             curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:18583/$route/"
           done
-          echo "MW_VPS_PACKAGE_PASS: Docker runtime 200, all three SPA routes 200, localhost binding only"
+          "${stack[@]}" ps
+          echo "MW_VPS_PACKAGE_PASS: exact Compose topology, HTTP 200 on all SPA routes, local-only binding"
