@@ -25,7 +25,15 @@ test "$(hostname -s)" = tatovacesta
 cd ~/projects/SynthesisMicroWorld-VPS
 test -z "$(git status --porcelain)" || { echo "Uncommitted files: STOP"; exit 2; }
 git fetch origin refs/heads/deploy/vps-https-002:refs/remotes/origin/deploy/vps-https-002
-git switch -c deploy/vps-https-002 --track origin/deploy/vps-https-002
+git show-ref --verify --quiet refs/remotes/origin/deploy/vps-https-002
+if git show-ref --verify --quiet refs/heads/deploy/vps-https-002; then
+  git switch deploy/vps-https-002
+else
+  git switch --no-track -c deploy/vps-https-002 \
+    refs/remotes/origin/deploy/vps-https-002
+fi
+test "$(git rev-parse HEAD)" = \
+  "$(git rev-parse refs/remotes/origin/deploy/vps-https-002)"
 bash deploy/vps/https-preflight.sh
 ```
 
