@@ -52,7 +52,7 @@ test('MW-007A-004: going to an occupied storage position stops outside its footp
   const path=planWalk(start,target,obstacles);
   assert.ok(path);
   assert.ok(eq(path.at(-1),p));
-  assert.ok(Math.hypot(p.x,p.z)>1.6);
+  assert.ok(Math.abs(p.x)>1.4||Math.abs(p.z)>1.2,'Citizen stands outside the storage boundary');
 });
 
 test('MW-007A-005: NPC cannot tunnel through wall on a large timestep',()=>{
