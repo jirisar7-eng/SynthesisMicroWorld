@@ -563,13 +563,44 @@ function renderUI(){
   const a=sim.agents[selectedAgent];el('npc-avatar').textContent=a.name.charAt(0);el('npc-avatar').style.background='#'+new THREE.Color(a.color).getHexString();
   el('npc-name').textContent=a.name;
   el('map-npc-name').textContent=a.name;
-  const actions={wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu'};
+  const actions={wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
   el('npc-role').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';el('npc-reason').textContent=a.reason;
   el('agent-state').textContent='ENERGIE '+Math.round(a.energy)+' %';
   el('map-npc-action').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';
   el('map-npc-reason').textContent=a.reason;
+  el('npc-personality').textContent=a.personality.name;
+  const stats=[['hunger',a.hunger],['social',a.socialNeed],['energy',a.energy],['mood',a.mood]];
+  for(const [name,value] of stats){
+    el('npc-'+name).textContent=Math.round(value)+' %';
+    el('need-'+name).style.width=clamp(value,0,100)+'%';
+  }
+  el('npc-memory').textContent=a.memories[a.memories.length-1]||'Zatím žádné vzpomínky';
+  const friends=sim.agents.filter(b=>b.id!==a.id && (a.relationships[b.id]??0)>0)
+    .sort((x,y)=>(a.relationships[y.id]??0)-(a.relationships[x.id]??0));
+  el('npc-friend').textContent=friends.length?friends[0].name+' · '+relationshipLabel(a.relationships[friends[0].id]):'Zatím se s nikým nespřátelil';
+  const conditions=sim.weather.kind==='rain'?'☂ Déšť':sim.weather.kind==='drought'?'☀ Sucho':'☀ Jasno';
+  el('map-weather').textContent=conditions;
+  el('world-weather').textContent=conditions;
+  const remaining=Math.max(0,12-(sim.seconds-sim.lastMiracle));
+  for(const button of document.querySelectorAll('[data-god]')){
+    button.disabled=remaining>.01;
+    button.title=remaining>0?'Další zásah za '+Math.ceil(remaining)+' herních sekund':'Změnit podmínky světa';
+  }
+  el('god-cooldown').textContent=remaining>0?
+    'Další zásah za '+Math.ceil(remaining)+' herních sekund · lidé stále rozhodují sami':
+    'Můžeš změnit podmínky světa. Každý zásah se zapíše do historie.';
 }
 el('btn-next-npc').addEventListener('click',()=>chooseAgent((selectedAgent+1)%sim.agents.length));
+for(const button of document.querySelectorAll('[data-god]')){
+  button.addEventListener('click',()=>{
+    const kind=button.dataset.god;
+    if(sim.miracle(kind)){
+      const label=kind==='rain'?'Déšť zasáhl krajinu.':kind==='drought'?'Krajinu zasáhlo sucho.':'Úroda v krajině zesílila.';
+      announce(label+' Sleduj, jak se obyvatelé zachovají.');
+      renderUI();
+    }else announce('Božská moc se ještě obnovuje.');
+  });
+}
 el('btn-pause').addEventListener('click',()=>{paused=!paused;el('btn-pause').textContent=paused?'▶':'Ⅱ';el('btn-pause').title=paused?'Pokračovat':'Pozastavit';});
 const speeds=[1,2,4];let speedIndex=0,paused=false;
 el('btn-speed').addEventListener('click',()=>{speedIndex=(speedIndex+1)%3;el('btn-speed').textContent=speeds[speedIndex]+'×';});
