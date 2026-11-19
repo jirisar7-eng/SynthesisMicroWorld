@@ -30,7 +30,11 @@ import {Civilization,terrainHeight,clamp,dist,rand,rng,seeded,points,names,color
 
 const el = id => document.getElementById(id);
 class Diorama {
-  constructor(container,sim){
+  constructor(container,sim,selection={}){
+    // The renderer lives outside launchMicroWorld's lexical scope: selection
+    // MUST be passed explicitly, never read as a nonexistent global.
+    this.getSelectedAgent=selection.getSelectedAgent||(()=>0);
+    this.chooseAgent=selection.chooseAgent||(()=>{});
     Diorama.lastStage='webgl';
     this.sim=sim;this.container=container;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#c8dfdd');this.scene.fog=new THREE.Fog('#c8dfdd',65,205);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
@@ -99,7 +103,7 @@ class Diorama {
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
     const canvas=this.renderer.domElement;let start={x:0,y:0};
     canvas.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
-    canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];if(hit){chooseAgent(hit.object.userData.agentId);}});
+    canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];if(hit){this.chooseAgent(hit.object.userData.agentId);}});
     this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(container);this.resize();
     Diorama.lastStage='ready';
   }
@@ -502,7 +506,7 @@ class Diorama {
       g.userData.head.rotation.y=a.purpose==='talking'?Math.sin(this.timer*2+i)*.25:Math.sin(this.timer*.8+i)*.07;
       g.userData.hair.rotation.y=g.userData.head.rotation.y;
       g.userData.bubble.visible=a.purpose==='talking';
-      g.userData.halo.visible=i===selectedAgent;
+      g.userData.halo.visible=i===this.getSelectedAgent();
       const carrying=g.userData.carryClass!=='empty';
       g.userData.cargoAnchor.rotation.x=carrying?Math.sin(this.timer*8+i)*.015:0;
     });
@@ -1089,7 +1093,10 @@ function showSceneFailure(error,stage){
 }
 
 try{
-  world=new Diorama(el('scene'),sim);
+  world=new Diorama(el('scene'),sim,{
+    getSelectedAgent:()=>selectedAgent,
+    chooseAgent:index=>chooseAgent(index)
+  });
   let viewingFar=false;
   el('btn-far-island')?.addEventListener('click',()=>{
     viewingFar=!viewingFar;
