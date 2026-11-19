@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
+import './god-console.css';
+import {createGodConsole} from './god-console.js';
 import {MaterialWorld, RECIPES, FOOD_TYPES, ITEM_INFO} from './material-world.js';
 import {initializeBiography,lifeEvent,experienceSkill,makeLifeCard} from './biography.js';
 import {MaterialRenderer,BuildingRenderer} from './material-renderer.js';
@@ -29,7 +31,8 @@ import {Civilization,terrainHeight,clamp,dist,rand,rng,seeded,points,names,color
 
 const el = id => document.getElementById(id);
 class Diorama {
-  constructor(container,sim){
+  constructor(container,sim,options={}){
+    this.onTap=options.onTap||null;
     this.sim=sim;this.container=container;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#c8dfdd');this.scene.fog=new THREE.Fog('#c8dfdd',65,205);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.7));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.43;
@@ -69,6 +72,7 @@ class Diorama {
     farGeo.computeVertexNormals();
     const farLand=new THREE.Mesh(farGeo,land.material);
     farLand.position.x=86;farLand.receiveShadow=true;this.scene.add(farLand);
+    this.godGround=[land,farLand];
     const water=new THREE.Mesh(new THREE.PlaneGeometry(270,270),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
     this.addCamp();
     this.treeModels=[];this.berryModels=[];this.saplingModels=[];
@@ -92,7 +96,7 @@ class Diorama {
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
     const canvas=this.renderer.domElement;let start={x:0,y:0};
     canvas.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
-    canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];if(hit){chooseAgent(hit.object.userData.agentId);}});
+    canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];const ground=this.raycaster.intersectObjects(this.godGround,false)[0];this.onTap?.({agentId:hit?.object?.userData?.agentId??null,point:ground?{x:ground.point.x,z:ground.point.z}:null});});
     this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(container);this.resize();
   }
   addDeposits(){
@@ -579,7 +583,8 @@ if(thirtyScenario){
     ' zakladatelů začíná s nezávislými potřebami a rozhodováním.','⌛');
 }
 let world;
-let remoteWorldMode=false,remoteWorldError=null;
+let remoteWorldMode=false,remoteWorldError=null,remoteEpoch=null;
+let godConsole=null;
 let initialSaveStatus=thirtyScenario?'Scénář 30 obyvatel':'Nový svět';
 try{
   const rawSave=window.localStorage.getItem(activeSaveKey);
@@ -599,8 +604,12 @@ async function refreshServerWorld(){
   if(!response.ok)throw new Error('Server HTTP '+response.status);
   const snapshot=await response.text();
   const oldSeconds=remoteWorldMode?sim.seconds:-1;
+  const incomingEpoch=Number(response.headers.get('X-MW-World-Epoch')||0);
+  const candidateSeconds=JSON.parse(snapshot)?.state?.seconds;
+  if(oldSeconds>=0&&candidateSeconds<oldSeconds&&incomingEpoch===remoteEpoch)
+    throw new Error('World clock went backwards without an authorized restore');
   const state=hydrateWorldMirror(sim,snapshot);
-  if(oldSeconds>=0&&state.seconds<oldSeconds)throw new Error('World clock went backwards');
+  remoteEpoch=incomingEpoch;
   remoteWorldMode=true;remoteWorldError=null;
   if(el('save-status'))el('save-status').textContent='Živý svět na VPS · den '+state.day;
   return state;
@@ -620,7 +629,7 @@ if(remoteWorldMode){
   for(const button of document.querySelectorAll('[data-god]'))button.disabled=true;
   for(const button of document.querySelectorAll('[data-visitor-move]'))button.disabled=true;
   const tagline=document.querySelector('.top-center');
-  if(tagline)tagline.textContent='ŽIVÝ SVĚT NA VPS · POUZE POZOROVÁNÍ';
+  if(tagline)tagline.textContent='ŽIVÝ SVĚT NA VPS · BOŽSKÝ PANEL';
   window.setInterval(async()=>{
     try{await refreshServerWorld();}
     catch(error){
@@ -632,6 +641,8 @@ if(remoteWorldMode){
 }
 
 
+godConsole=createGodConsole({sim,isRemote:()=>remoteWorldMode,
+  refreshWorld:refreshServerWorld,getSelectedAgent:()=>selectedAgent});
 // Two real navigable page routes; transitions preserve the running simulation and WebGL instance.
 function pageFromLocation(){
   return location.pathname.startsWith('/lide')?'people':
@@ -670,7 +681,7 @@ function events(){
   }
 }
 sim.listeners.push(m=>{events();if(m.title.includes('stavba')||m.title.includes('přístřešek'))announce(m.detail);});
-function chooseAgent(index){selectedAgent=index;renderUI();}
+function chooseAgent(index){selectedAgent=index;godConsole?.selectAgent(index);renderUI();}
 function drawPersonalKnowledgeMap(knowledge, person){
   const canvas=el('knowledge-map');
   if(!canvas || !document.body.classList.contains('page-overview'))return;
@@ -894,7 +905,7 @@ function renderUI(){
   el('world-weather').textContent=conditions;
   const remaining=Math.max(0,12-(sim.seconds-sim.lastMiracle));
   for(const button of document.querySelectorAll('[data-god]')){
-    button.disabled=remaining>.01;
+    button.disabled=remoteWorldMode||remaining>.01;
     button.title=remaining>0?'Další zásah za '+Math.ceil(remaining)+' herních sekund':'Změnit podmínky světa';
   }
   const knowledge=knowledgeSummary(a);
@@ -1050,7 +1061,10 @@ el('btn-close-modal').addEventListener('click',()=>el('help-modal').classList.ad
 el('help-modal').addEventListener('click',e=>{if(e.target===el('help-modal'))el('help-modal').classList.add('hidden');});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')el('help-modal').classList.add('hidden');if(e.code==='Space' && e.target.tagName!=='BUTTON'){e.preventDefault();el('btn-pause').click();}});
 try{
-  world=new Diorama(el('scene'),sim);
+  world=new Diorama(el('scene'),sim,{onTap:({agentId,point})=>{
+    if(godConsole?.wantsArea()){if(point)godConsole.selectPoint(point);return;}
+    if(agentId!==null)chooseAgent(agentId);
+  }});
   let viewingFar=false;
   el('btn-far-island')?.addEventListener('click',()=>{
     viewingFar=!viewingFar;
