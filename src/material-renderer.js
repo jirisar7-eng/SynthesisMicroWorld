@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {RECIPES,ITEM_INFO} from './material-world.js';
 import {stockSlotGroup} from './stockpile-layout.js';
 import {handPose,cargoClass} from './carry-poses.js';
+import {terrainPose,foundationContact} from './terrain-contact.js';
 
 const material=(hex,roughness=.92)=>new THREE.MeshStandardMaterial({color:hex,roughness});
 const resources={
@@ -11,6 +12,30 @@ const resources={
 };
 const box=(x,y,z)=>new THREE.BoxGeometry(x,y,z);
 const ground=(h,x,z)=>h(x,z);
+function groundGroup(container,h,clearance=.04,maxTilt=.10){
+  const g=new THREE.Group();
+  const p=terrainPose(h,container.x,container.z,{clearance,maxTilt});
+  g.position.set(container.x,p.y,container.z);
+  g.rotation.x=p.tiltX;g.rotation.z=p.tiltZ;
+  return g;
+}
+function addFoundationSupports(group,contact,height,color='#918d7d'){
+  const mat=material(color);
+  for(const p of contact.corners){
+    const x=p.x*.86,z=p.z*.86;
+    const groundY=height(group.position.x+x,group.position.z+z);
+    const depth=Math.max(.08,contact.top-groundY+.05);
+    const pier=new THREE.Mesh(box(.36,depth,.36),mat);
+    pier.position.set(x,-depth/2+.02,z);
+    pier.castShadow=true;pier.receiveShadow=true;group.add(pier);
+  }
+  const skirtDepth=Math.max(.14,contact.top-contact.low+.06);
+  const skirt=new THREE.Mesh(box(
+    Math.abs(contact.corners[3].x-contact.corners[0].x)+.12,
+    skirtDepth,
+    Math.abs(contact.corners[1].z-contact.corners[0].z)+.12),mat);
+  skirt.position.y=-skirtDepth/2+.03;skirt.receiveShadow=true;group.add(skirt);
+}
 
 function pieceFor(item){
   let shape;
@@ -40,8 +65,7 @@ function pieceFor(item){
 }
 
 function crateMesh(container,h){
-  const group=new THREE.Group();
-  group.position.set(container.x,ground(h,container.x,container.z)+.05,container.z);
+  const group=groundGroup(container,h,.05,.10);
   const wood=material('#a7825e');
   const base=new THREE.Mesh(box(1.4,.12,1.3),wood);base.position.y=.12;group.add(base);
   for(const x of [-.65,.65]){
@@ -53,8 +77,7 @@ function crateMesh(container,h){
   return group;
 }
 function basketMesh(container,h){
-  const group=new THREE.Group();
-  group.position.set(container.x,ground(h,container.x,container.z)+.06,container.z);
+  const group=groundGroup(container,h,.06,.10);
   const wicker=material('#b18a52');
   const shell=new THREE.Mesh(new THREE.CylinderGeometry(.55,.4,.5,12,1,true),wicker);
   shell.material.side=THREE.DoubleSide; shell.position.y=.35;group.add(shell);
@@ -68,8 +91,10 @@ function basketMesh(container,h){
 }
 
 function shedMesh(container,h){
+  const contact=foundationContact(h,container.x,container.z,3.25,2.1);
   const g=new THREE.Group();
-  g.position.set(container.x,ground(h,container.x,container.z)+.02,container.z);
+  g.position.set(container.x,contact.top,container.z);
+  addFoundationSupports(g,contact,h);
   const wood=material('#89745b');
   const slab=new THREE.Mesh(box(3.25,.16,2.1),wood);slab.position.y=.12;g.add(slab);
   const roof=new THREE.Mesh(box(3.5,.15,2.4),material('#6b7066'));roof.position.y=2.1;g.add(roof);
@@ -80,8 +105,7 @@ function shedMesh(container,h){
 }
 
 function pileBaseMesh(container,height){
-  const root=new THREE.Group();
-  root.position.set(container.x,ground(height,container.x,container.z)+.01,container.z);
+  const root=groundGroup(container,height,.01,.075);
   const pallet=material('#977f61'),underside=material('#78674f');
   if(container.id==='woodpile'){
     // Low pallet is a visual staging surface, not a free material resource.
@@ -105,8 +129,7 @@ function pileBaseMesh(container,height){
   return root;
 }
 function seedTrayMesh(container,height){
-  const root=new THREE.Group();
-  root.position.set(container.x,ground(height,container.x,container.z)+.02,container.z);
+  const root=groundGroup(container,height,.02,.09);
   const mat=material('#9e805b');
   const base=new THREE.Mesh(box(1.3,.09,1),mat);base.position.y=.045;root.add(base);
   for(const x of [-.61,.61]){
@@ -217,8 +240,9 @@ export class BuildingRenderer {
     this.scene=scene;this.height=height;this.done=new Map();this.preview=null;this.previewKey=null;this.fields=new Map();this.tentModels=new Map();
   }
   makeTent(tent){
-    const group=new THREE.Group();
-    group.position.set(tent.x,this.height(tent.x,tent.z)+.02,tent.z);
+    const contact=foundationContact(this.height,tent.x,tent.z,3.4,2.8);
+    const group=new THREE.Group();group.position.set(tent.x,contact.top,tent.z);
+    addFoundationSupports(group,contact,this.height);
     const cloth=material('#9a8e69');
     const frame=material('#65523e');
     const platform=new THREE.Mesh(box(3.4,.10,2.8),material('#a49b7e'));
@@ -243,8 +267,10 @@ export class BuildingRenderer {
   }
   makeBuilding(type,x,z,progress=1){
     const spec=RECIPES[type]||RECIPES.house,mat=buildingMaterials[type]||buildingMaterials.house;
-    const group=new THREE.Group();group.position.set(x,this.height(x,z),z);
     const [w,d]=spec.size;
+    const contact=foundationContact(this.height,x,z,w+.55,d+.55);
+    const group=new THREE.Group();group.position.set(x,contact.top,z);
+    addFoundationSupports(group,contact,this.height,'#9f9a8c');
     const platform=new THREE.Mesh(box(w+.55,.22,d+.55),material('#a49374'));
     platform.position.y=.12;platform.receiveShadow=true;group.add(platform);
     const body=new THREE.Mesh(box(w,2.45,d),mat.wall);
@@ -303,7 +329,9 @@ export class BuildingRenderer {
     for(const field of economy.fields){
       let patch=this.fields.get(field.id);
       if(!patch){
-        patch=new THREE.Group();patch.position.set(field.x,this.height(field.x,field.z)+.12,field.z);
+        const contact=foundationContact(this.height,field.x,field.z,4.8,3);
+        patch=new THREE.Group();patch.position.set(field.x,contact.top,field.z);
+        addFoundationSupports(patch,contact,this.height,'#745a42');
         const soil=new THREE.Mesh(box(4.8,.18,3),material('#725c43'));
         soil.receiveShadow=true;patch.add(soil);
         for(let r=0;r<4;r++){
