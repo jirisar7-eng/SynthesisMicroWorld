@@ -88,14 +88,16 @@ export class MaterialWorld {
     const c=this.containers.get(item.container);
     return !!c && c.kind!=='carry' && c.kind!=='site' && c.kind!=='tentStorage';
   }
-  count(type){return this.items.filter(x=>x.type===type&&this.isAvailable(x)).length;}
+  // Shared mainland accounting NEVER reaches an unmanned depot overseas.
+  // Citizens on the far island can still access that depot explicitly.
+  count(type){return this.items.filter(x=>x.type===type&&x.container!=='far-cache'&&this.isAvailable(x)).length;}
   countStored(type){return this.items.filter(x=>x.type===type&&this.containers.get(x.container)?.kind!=='carry').length;}
   countCarried(){return this.items.filter(x=>this.containers.get(x.container)?.kind==='carry').length;}
   foodCount(){return FOOD_TYPES.reduce((n,t)=>n+this.count(t),0);}
   countAll(){return this.items.length;}
   consume(type,quantity=1){
     if(quantity<0||!Number.isInteger(quantity))throw new Error('Invalid quantity');
-    const candidates=this.items.filter(i=>i.type===type&&this.isAvailable(i));
+    const candidates=this.items.filter(i=>i.type===type&&i.container!=='far-cache'&&this.isAvailable(i));
     if(candidates.length<quantity)return null;
     // Dry wood burns more effectively; use stored pieces first in normal construction.
     const selected=candidates.slice(0,quantity);
@@ -104,7 +106,7 @@ export class MaterialWorld {
     return selected;
   }
   findFoodSource(){
-    const item=this.items.find(i=>FOOD_TYPES.includes(i.type)&&this.isAvailable(i));
+    const item=this.items.find(i=>FOOD_TYPES.includes(i.type)&&i.container!=='far-cache'&&this.isAvailable(i));
     if(!item)return null;
     return {item,container:this.containers.get(item.container)};
   }
@@ -158,7 +160,7 @@ export class MaterialWorld {
   burnWood(time,weather){
     if(time-this.fire.lastFuel<21)return null;
     this.fire.lastFuel=time;
-    const wood=this.items.filter(x=>x.type==='wood'&&this.isAvailable(x)).sort((a,b)=>a.wet-b.wet)[0];
+    const wood=this.items.filter(x=>x.type==='wood'&&x.container!=='far-cache'&&this.isAvailable(x)).sort((a,b)=>a.wet-b.wet)[0];
     if(!wood){this.fire.heat=0;return null;}
     this.items=this.items.filter(x=>x.id!==wood.id);
     const effectiveHeat=Math.round(100*(1-wood.wet*.77));
