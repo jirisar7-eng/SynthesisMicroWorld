@@ -5,7 +5,7 @@
 set -euo pipefail
 
 if [[ "${1:-}" != "--apply" ]]; then
-  echo 'Usage: MW014_APPROVED_SHA=<exact 40-character SHA> bash deploy/vps/mw011/web-only-diagnostics.sh --apply'
+  echo 'Usage: MW014_APPROVED_SHA=<exact 40-character SHA> bash deploy/vps/mw011/web-only-mw014.sh --apply'
   exit 2
 fi
 test "$(hostname -s)" = tatovacesta || { echo 'BLOCKED: wrong host'; exit 2; }
