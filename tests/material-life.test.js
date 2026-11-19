@@ -69,8 +69,8 @@ test('MW-MAT-005: seeds must exist and be consumed before fields can grow',()=>{
  world.tick(250,'rain');
  assert.equal(field.growth,1);
  const harvest=world.harvest(field.id);
- assert.deepEqual(harvest,{grain:6,seeds:2});
- assert.equal(world.count('grain'),6);
+ assert.deepEqual(harvest,{berries:6,seeds:2});
+ assert.equal(world.count('berry'),20);
  assert.equal(world.count('seed'),2);
  assert.equal(world.harvest(field.id),null);
 });
