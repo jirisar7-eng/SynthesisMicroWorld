@@ -56,6 +56,7 @@ export function solidFootprints(world) {
   for(const t of world.saplings||[])result.push(circle('sapling-'+t.id,t.x,t.z,.24));
   for(const b of world.boulders||[])result.push(circle('boulder-'+b.id,b.x,b.z,b.r||.72));
   for(const b of world.fallenLogs||[])result.push(circle('fallenlog-'+b.id,b.x,b.z,.78));
+  for(const spring of world.springs||[])result.push(circle(spring.id,spring.x,spring.z,.82));
   return result;
 }
 

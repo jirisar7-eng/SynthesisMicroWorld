@@ -10,6 +10,7 @@ on:
       - feature/mw-006d-carry-terrain-assets
       - feature/mw-007-real-space
       - feature/mw-008-construction-avatar
+      - feature/mw-009-living-generations
   pull_request:
     branches:
       - feature/mw-001-first-life
@@ -20,6 +21,7 @@ on:
       - feature/mw-006c-natural-stockpiles
       - deploy/vps-https-002
       - feature/mw-007-real-space
+      - feature/mw-008-construction-avatar
       - main
 permissions:
   contents: read

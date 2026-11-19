@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MW-008 / MUTATING: only upgrades the isolated MicroWorld Docker service.
+# MW-009 / MUTATING: only upgrades the isolated MicroWorld Docker service.
 # Keeps existing microworld.tatovacesta.cz Caddyfile, DNS, mail and other containers unchanged.
 set -euo pipefail
 if [[ "${1:-}" != "--apply" ]]; then
@@ -11,7 +11,7 @@ if [[ "$(hostname -s)" != "tatovacesta" || "$(id -un)" != "uadmin" ]]; then
   echo 'BLOCKED: must run as uadmin on tatovacesta.' >&2; exit 2
 fi
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-if [[ "$(git branch --show-current)" != "feature/mw-008-construction-avatar" ]]; then
+if [[ "$(git branch --show-current)" != "feature/mw-009-living-generations" ]]; then
   echo 'BLOCKED: expected reviewed feature/mw-007-real-space branch.' >&2; exit 2
 fi
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -43,14 +43,14 @@ STACK=(docker compose --project-name microworld_private
 if [[ "$(curl -fsS --max-time 4 http://127.0.0.1:18583/healthz)" != ok ]]; then
   echo 'BLOCKED: original local HTTP baseline is not healthy.' >&2; exit 2
 fi
-echo "MW008_UPGRADE_BEGIN sha=$SHA previous=$PREVIOUS"
+echo "MW009_UPGRADE_BEGIN sha=$SHA previous=$PREVIOUS"
 # Build a new immutable local image while the previous container keeps serving traffic.
 "${STACK[@]}" build web
 upgraded=0
 rollback(){
   local status=$?
   if (( status != 0 )) && (( upgraded != 0 )); then
-    echo "MW007_UPGRADE_FAIL; attempting local image rollback to $PREVIOUS" >&2
+    echo "MW009_UPGRADE_FAIL; attempting local image rollback to $PREVIOUS" >&2
     export MICROWORLD_RELEASE="${PREVIOUS#local/microworld:}"
     "${STACK[@]}" up --no-build --no-deps -d web || true
     echo 'Rollback was attempted: verify HTTP, edge and actual browser access.' >&2
@@ -83,5 +83,5 @@ if [[ "$status" != 401 ]]; then
   exit 1
 fi
 "${STACK[@]}" ps
-echo "MW007_UPGRADE_PASS sha=$SHA routes=3 game=200 protected=https-401"
+echo "MW009_UPGRADE_PASS sha=$SHA routes=3 game=200 protected=https-401"
 echo 'Check physical pathfinding and object grounding in the actual Android browser.'

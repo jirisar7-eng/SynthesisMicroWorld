@@ -25,7 +25,8 @@ export function initCognition(agent) {
       tree: { success: 0, failed: 0 },
       berry: { success: 0, failed: 0 },
       stone: { success: 0, failed: 0 },
-      apple: { success: 0, failed: 0 }
+      apple: { success: 0, failed: 0 },
+      spring: { success: 0, failed: 0 }
     }
   };
   // The home camp is familiar, but the distant wilderness is not.
@@ -53,13 +54,13 @@ export function episode(agent, { time, title, cause, outcome, category = 'decisi
  * A physical sighting is authoritative for THIS observer and THIS moment only.
  * It does not magically refresh other agents' memories.
  */
-export function observeNearby(agent, { trees = [], berries = [], stones = [], apples = [] }, time, radius = 7.5) {
+export function observeNearby(agent, { trees = [], berries = [], stones = [], apples = [], springs = [] }, time, radius = 7.5) {
   const c = agent.cognition;
   if (time - c.lastScan < 0.55) return [];
   c.lastScan = time;
   visit(agent, agent.x, agent.z, time);
   const found = [];
-  for (const [type, sources] of [['tree', trees], ['berry', berries], ['stone', stones], ['apple', apples]]) {
+  for (const [type, sources] of [['tree', trees], ['berry', berries], ['stone', stones], ['apple', apples], ['spring', springs]]) {
     for (const source of sources) {
       if (distance(agent, source) > radius) continue;
       const key = type + ':' + source.id;
@@ -68,7 +69,7 @@ export function observeNearby(agent, { trees = [], berries = [], stones = [], ap
         c.discoveries++;
         found.push({ type, id: source.id, x: source.x, z: source.z });
         episode(agent, {
-          time, title: ({tree:'Objevil strom',berry:'Objevil jedlé plody',stone:'Objevil kámen',apple:'Objevil jabloň'})[type],
+          time, title: ({tree:'Objevil strom',berry:'Objevil jedlé plody',stone:'Objevil kámen',apple:'Objevil jabloň',spring:'Objevil zdroj pitné vody'})[type],
           cause: 'Při průzkumu se dostal na dohled nového zdroje.',
           outcome: 'Zapamatoval si přibližnou polohu a zásobu.',
           category: 'discovery'
@@ -148,6 +149,7 @@ export function learnOutcome(agent, type, source, amount, time) {
   const c = agent.cognition;
   const record = c.resources[type + ':' + source.id];
   const success = amount > 0;
+  if (!c.experience[type]) c.experience[type] = {success:0,failed:0};
   c.experience[type][success ? 'success' : 'failed']++;
   if (record) {
     record.estimatedStock = source.stock;
