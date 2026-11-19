@@ -14,6 +14,16 @@ const baseline=sim.material.countAll(),start=process.hrtime.bigint();
 const endSeconds=days*75;
 while(sim.seconds<endSeconds){
   sim.update(Math.min(step,endSeconds-sim.seconds));
+  if([2,5,10,20,30].includes(sim.day)&&Math.abs(sim.seconds%75)<step){
+    const persons=sim.agents.filter(a=>a.alive!==false);
+    const sample=persons.slice(0,4).map(a=>({id:a.id,
+      x:Math.round(a.x),z:Math.round(a.z),h:Math.round(a.hunger),
+      t:Math.round(a.thirst),hp:Math.round(a.health),
+      mode:a.mode,task:a.purpose,reason:a.reason,
+      waterKnown:Object.values(a.cognition.resources).filter(x=>x.type==='spring').length}));
+    console.log('MW_LIFE_DIAGNOSTIC',JSON.stringify({day:sim.day,
+      alive:persons.length,food:sim.food,water:sim.springs.map(x=>x.stock),sample}));
+  }
   if(sim.day%50===0&&Math.abs(sim.seconds%75)<step){
     const summary=livingSummary(sim.agents);
     console.log('MW_LIFE_PROGRESS',JSON.stringify({day:sim.day,summary,
@@ -26,12 +36,22 @@ while(sim.seconds<endSeconds){
 }
 const results={
   test:'MW-LIFE-001',durationDays:days,initialLiving:30,
-  final:livingSummary(sim.agents),structures:sim.material.structures.length,
+  final:livingSummary(sim.agents),
+  mortality:Object.fromEntries([...new Set(sim.agents.filter(p=>!p.alive)
+    .map(p=>p.deathCause||'neuvedeno'))].map(cause=>[cause,
+      sim.agents.filter(p=>!p.alive&&(p.deathCause||'neuvedeno')===cause).length])),
+  structures:sim.material.structures.length,
   builtWithPhases:sim.material.structures.filter(s=>s.groundPrepared&&s.scaffoldingDismantled).length,
   inventory:sim.material.countAll(),initialInventory:baseline,
   trail:sim.paths.summary(),water:sim.springs.reduce((n,s)=>n+s.stock,0),
   year:calendarAt(sim.day).year,events:sim.chronicle.length,
   materialTransport:sim.material.logistics.transported,
+  maritime:{islands:2,discoveredBy:sim.islands.discoveredBy.length,
+    crossings:sim.islands.crossings,returns:sim.islands.returns,
+    vessels:sim.islands.vessels.length,predatorAttacks:sim.islands.attacks,
+    fish:sim.islands.fish},
+  professions:[...new Set(sim.agents.filter(a=>a.alive!==false)
+    .map(a=>a.profile.occupation))].sort(),
   runtimeSeconds:Number((Number(process.hrtime.bigint()-start)/1e9).toFixed(2))
 };
 console.log('MW_LIFE_001_REPORT',JSON.stringify(results));

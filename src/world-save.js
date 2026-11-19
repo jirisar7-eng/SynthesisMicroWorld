@@ -1,6 +1,7 @@
 import {MaterialWorld} from './material-world.js';
 import {Footpaths} from './footpaths.js';
 import {SocialDynamics} from './social-dynamics.js';
+import {initializeIslands} from './island-life.js';
 
 /** MW-009 — versioned single-device world persistence.
  * This stores true simulation state, not just visible UI summaries.
@@ -64,6 +65,12 @@ export function restoreWorld(sim,json){
   const paths=Object.assign(new Footpaths(),state.paths);
   Object.assign(sim,state);
   sim.material=material;sim.social=social;sim.paths=paths;
+  // Compatible with pre-MW-011 saves: their resources and second-island
+  // container do not exist yet, so migrate once without resetting residents.
+  if(!state.islands){
+    sim.islands=null;
+    initializeIslands(sim);
+  }
   sim.listeners=listeners;
   // A paused journey cannot be resumed using copied stale object references.
   // Place carried goods on physical ground and let each citizen replan.
@@ -72,6 +79,13 @@ export function restoreWorld(sim,json){
     agent.conversation=null;
     if(agent.alive===false){
       agent.mode='deceased';agent.purpose='';agent.target=null;agent.waypoints=[];
+    }else if(agent.mode==='voyage'&&agent.voyage){
+      // Preserve exact voyage position and vessel reservation on restart.
+      agent.target=null;agent.waypoints=[];
+      const vessel=sim.islands?.vessels.find(v=>v.id===agent.voyage.vesselId);
+      if(vessel)vessel.inUse=agent.id;
+    }else if(agent.mode==='distress'){
+      agent.target=null;agent.waypoints=[];
     }else if((agent.profile?.age??18)<18){
       agent.mode='dependent';agent.purpose='childhood';
       agent.target=null;agent.waypoints=[];agent.choiceAt=Infinity;

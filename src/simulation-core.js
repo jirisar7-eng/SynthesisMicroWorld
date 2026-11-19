@@ -15,6 +15,9 @@ import {populationDay,livingSummary,isDependent,isLiving,populateFounders} from 
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot} from './spatial-world.js';
 import {initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode} from './cognition.js';
 import {initializeLife,updateLife,remember,socialBond,needsDecision,relationshipLabel} from './life.js';
+import {initializeIslands,islandOf,forbidsWalkingAcrossSea,considerCoast,considerFarIsland,
+  coastalArrival,coastalComplete,advanceVoyage,advancePredators} from './island-life.js';
+import {mentorAtMeeting,updateProfessions} from './professions.js';
 
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
 const dist = (a,b) => Math.hypot(a.x-b.x,a.z-b.z);
@@ -22,6 +25,13 @@ const rand = (min,max) => min+Math.random()*(max-min);
 const names = ['Adam','Ema','Tobiáš','Klára','Matěj','Nora'];
 const colors = [0xb17b59,0x9baf74,0x637f9b,0xca9d75,0x8e798d,0x81ad9f];
 const terrainHeight = (x,z) => {
+  // Same deterministic second-island heightfield is shared by physics and 3D.
+  if(x>55){
+    const d=Math.hypot((x-86)*1.025,z);
+    const shore=clamp(1-Math.pow(d/23,4),0,1);
+    return -1.65+3.35*shore+
+      (.18*Math.sin(x*.31+z*.21)+.13*Math.cos(z*.53-x*.27))*clamp(shore*2,0,1);
+  }
   const r=Math.hypot(x,z);
   const shore=clamp(1-Math.pow(r/46,4),0,1);
   // Related scales (large hills, erosional folds, local surface) make
@@ -77,6 +87,7 @@ class Civilization {
       const p=this.trees[(i*7+3)%this.trees.length],angle=i*2.399963229728;
       return {id:i,x:p.x+Math.cos(angle)*2.2,z:p.z+Math.sin(angle)*2.2,yaw:angle};
     });
+    initializeIslands(this);
     this.agents=names.map((name,i)=>initializeBiography(initCognition(initializeLife({id:i,name,x:this.rand(-2.8,2.8),z:this.rand(-2.8,2.8),energy:75+this.rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,carryType:null,workRemaining:0,workTotal:0,choiceAt:0,speed:2+this.rand(0,.55),color:colors[i]},i)),i));
     this.social=new SocialDynamics();
     for(const agent of this.agents){agent.alive=true;agent.health=100;agent.sex=agent.id%2===0?'female':'male';}
@@ -127,21 +138,39 @@ class Civilization {
   }
   beginConversation(a,b){
     const id=++this.meetingSeq;
-    const x=this.rand(-2.7,2.7),z=this.rand(-3,3);
-    this.meetings.set(id,{first:a.id,second:b.id,ready:new Set(),done:false});
+    const far=islandOf(a)==='far';
+    const x=(far?86:0)+this.rand(-2.7,2.7),z=this.rand(-3,3);
+    this.meetings.set(id,{first:a.id,second:b.id,ready:new Set(),done:false,startedAt:this.seconds});
     a.conversation=id;b.conversation=id;
-    this.go(a,'meet',{x:x-.45,z},'Chce si popovídat s '+b.name+' a posílit vztahy.');
-    this.go(b,'meet',{x:x+.45,z},'Přijal pozvání od '+a.name+' ke společnému rozhovoru.');
+    // A conversation is atomic. If even one route is impossible, neither
+    // participant may be left waiting indefinitely for a non-arriving peer.
+    const left=this.go(a,'meet',{x:x-.45,z},'Chce si popovídat s '+b.name+' a posílit vztahy.');
+    const right=left&&this.go(b,'meet',{x:x+.45,z},'Přijal pozvání od '+a.name+' ke společnému rozhovoru.');
+    if(!left||!right){
+      this.meetings.delete(id);
+      for(const person of [a,b]){
+        if(person.conversation!==id)continue;
+        person.conversation=null;
+        if(['meet','waiting'].includes(person.purpose))this.idle(person);
+      }
+      return false;
+    }
+    return true;
   }
   seekConversation(a){
-    const candidates=this.agents.filter(b=>b.id!==a.id && isLiving(b)&&!isDependent(b) && b.mode==='idle' && b.socialNeed>=38 && b.energy>23 && b.hunger<72);
+    const candidates=this.agents.filter(b=>b.id!==a.id && isLiving(b)&&!isDependent(b) && islandOf(b)===islandOf(a) && b.mode==='idle' && !b.conversation && Math.hypot(a.x-b.x,a.z-b.z)<12 && b.socialNeed>=38 && b.energy>23 && b.hunger<72);
     if(!candidates.length)return false;
     const b=candidates.sort((x,y)=>(y.socialNeed+(a.relationships[y.id]||0)*.12)-(x.socialNeed+(a.relationships[x.id]||0)*.12))[0];
-    this.beginConversation(a,b);return true;
+    return this.beginConversation(a,b);
   }
   go(a,purpose,target,reason,resource=null){
     // Interaction occurs at a reachable outer edge, NEVER inside its mesh.
     const requested={x:target.x,z:target.z};
+    if(forbidsWalkingAcrossSea(a,requested)){
+      this.idle(a);
+      a.reason='Přes moře se nedá přejít pěšky. Musí vymyslet přepravu.';
+      return false;
+    }
     const obstacles=solidFootprints(this);
     if(purpose==='departCamp'){
       // Reserve the footprint BEFORE pitching the tent. The builder walks
@@ -217,6 +246,10 @@ class Civilization {
   decide(a){
     if(this.seconds<a.choiceAt)return;
     this.syncStock();
+    if(islandOf(a)==='far'){
+      if(!considerFarIsland(this,a))this.idle(a);
+      return;
+    }
     // Social travel is a persistent real-world state: if a walking route was
     // obstructed mid-trip, citizens retry when terrain becomes available.
     // They must not get stranded in a status that normal decisions ignore.
@@ -320,6 +353,7 @@ class Civilization {
       }
     }
     if(need==='social' && this.seekConversation(a))return;
+    if(considerCoast(this,a))return;
     if(a.helpVisitorPending && this.avatar.mode==='poor' && this.food>6&&a.energy>30){
       const source=this.material.findFoodSource();
       a.helpVisitorPending=false;
@@ -445,6 +479,7 @@ class Civilization {
       'Nezná žádný vhodný aktuální zdroj. Nejdřív musí oblast sám prozkoumat.');
   }
   arrived(a){
+    if(coastalArrival(this,a))return;
     if(a.purpose==='departWood'){
       if(this.material.packDepartureWood(a)){
         a.carry=this.material.cargo(a).length;a.carryType='wood';
@@ -678,7 +713,7 @@ class Civilization {
       this.work(a,'forage',2.3+this.rand(0,1),'Sbírá jedlé plody pro osadu.');return;
     }
     if(a.purpose==='returnwood'){
-      this.material.deliver(a);
+      this.material.deliver(a,islandOf(a)==='far'?'far-cache':null);
       experienceSkill(a,'wood',a.carry);
       a.twigsCarry=0;a.carry=0;a.carryType=null;this.syncStock();this.idle(a);
       if(this.wood>=12&&!this.shelters.length&&!this.construction)this.addEvent(
@@ -686,11 +721,11 @@ class Civilization {
       return;
     }
     if(a.purpose==='returnfood'){
-      this.material.deliver(a);
+      this.material.deliver(a,islandOf(a)==='far'?'far-cache':null);
       a.carry=0;a.carryType=null;a.seedsCarry=0;this.syncStock();this.idle(a);return;
     }
     if(a.purpose==='returnstone'){
-      this.material.deliver(a);
+      this.material.deliver(a,islandOf(a)==='far'?'far-cache':null);
       experienceSkill(a,'stone',a.carry);
       a.carry=0;a.carryType=null;this.syncStock();this.idle(a);return;
     }
@@ -704,9 +739,10 @@ class Civilization {
         ' z fyzicky dovezeného materiálu.');return;
     }
     if(a.purpose==='rest'){this.work(a,'resting',6,'Odpočívá po práci v blízkosti osady.');return;}
-    if(a.purpose==='explore'){if(this.seconds-this.lastScout>15){this.addEvent('Průzkum okolí',a.name+' prozkoumal další kus krajiny.','⌕');this.lastScout=this.seconds;}this.idle(a);}
+    if(a.purpose==='explore'){experienceSkill(a,'exploration',1);if(this.seconds-this.lastScout>15){this.addEvent('Průzkum okolí',a.name+' prozkoumal další kus krajiny.','⌕');this.lastScout=this.seconds;}this.idle(a);}
   }
   completed(a){
+    if(coastalComplete(this,a))return;
     if(a.purpose==='collectFamilyWater'){
       const order=a.resource;
       const source=this.springs.find(s=>s.id===order?.sourceId);
@@ -790,6 +826,11 @@ class Civilization {
         if(!conflict){
           const heardA=exchangeKnowledge(second,first,this.seconds,3);
           const heardB=exchangeKnowledge(first,second,this.seconds,3);
+          const taught=[...mentorAtMeeting(first,second,this),
+            ...mentorAtMeeting(second,first,this)];
+          if(taught.length)this.addEvent('Učení mezi obyvateli',
+            first.name+' a '+second.name+' si předali '+taught.length+
+            ' praktických dovedností či technologických nápadů.','✧');
           if(heardA.length+heardB.length){
             this.addEvent('Výměna znalostí',first.name+' a '+second.name+
               ' si předali '+(heardA.length+heardB.length)+' informací o zdrojích.','✧');
@@ -809,7 +850,7 @@ class Civilization {
       this.material.collect(a,'wood',amount,{origin:'tree:'+a.resource?.id,time:this.seconds});
       if(amount)this.material.collect(a,'twig',1,{origin:'tree:'+a.resource?.id,time:this.seconds});
       remember(a,'Nasbíral dřevo a proutí pro osadu');
-      this.go(a,'returnwood',{x:0,z:0},'Nese '+amount+' jednotky dřeva do společných zásob.');return;
+      this.go(a,'returnwood',islandOf(a)==='far'?{x:85,z:0}:{x:0,z:0},'Nese '+amount+' jednotky dřeva do společných zásob.');return;
     }
     if(a.purpose==='forage'){
       const amount=Math.min(a.resource?.stock||0,4);if(a.resource)a.resource.stock-=amount;
@@ -818,7 +859,7 @@ class Civilization {
       this.material.collect(a,'berry',amount,{origin:'berry:'+a.resource?.id,time:this.seconds});
       if(amount)this.material.collect(a,'seed',1,{origin:'berry:'+a.resource?.id,time:this.seconds});
       remember(a,'Nasbíral bobule a nalezl semínka');
-      this.go(a,'returnfood',{x:0,z:0},'Nese nasbírané jídlo do společných zásob.');return;
+      this.go(a,'returnfood',islandOf(a)==='far'?{x:85,z:0}:{x:0,z:0},'Nese nasbírané jídlo do společných zásob.');return;
     }
     if(a.purpose==='mining'||a.purpose==='applepicking'){
       const type=a.purpose==='mining'?'stone':'apple';
@@ -827,7 +868,7 @@ class Civilization {
       if(a.resource)learnOutcome(a,type,a.resource,amount,this.seconds);
       a.carry=amount;a.carryType=type;
       this.material.collect(a,type,amount,{origin:type+':'+a.resource?.id,time:this.seconds});
-      this.go(a,type==='stone'?'returnstone':'returnfood',{x:0,z:0},
+      this.go(a,type==='stone'?'returnstone':'returnfood',islandOf(a)==='far'?{x:85,z:0}:{x:0,z:0},
         'Nese '+amount+' kusy '+(type==='stone'?'kamene':'jablek')+' do skladu.');return;
     }
     if(a.purpose==='weaving'){
@@ -940,6 +981,21 @@ class Civilization {
   }
   update(dt){
     this.seconds+=dt;this.day=Math.floor(this.seconds/75)+1;
+    advancePredators(this,dt);
+    // Abort meetings whose routes became blocked after their initial plan.
+    // Starvation must never arise because a partner waits forever.
+    for(const [id,meeting] of this.meetings){
+      if(meeting.done||this.seconds-(meeting.startedAt??0)<55)continue;
+      this.meetings.delete(id);
+      for(const person of [this.agents[meeting.first],this.agents[meeting.second]]){
+        if(!person||person.conversation!==id)continue;
+        person.conversation=null;
+        if(['waiting','meet'].includes(person.purpose)){
+          this.idle(person);person.choiceAt=this.seconds+1;
+          person.reason='Protějšek se nedostavil. Rozhovor odložil a řeší jiné potřeby.';
+        }
+      }
+    }
     this.material.tick(dt,this.weather.kind);
     if(this.seconds-this.lastPathReport>30){
       const trailStats=this.paths.summary();
@@ -967,6 +1023,9 @@ class Civilization {
       const endingDay=Math.floor(this.nextMeal/75)+1;
       this.nextMeal+=75;
       springRefill(this.springs,this.weather.kind);
+      const roles=updateProfessions(this);
+      for(const role of roles)this.addEvent('Nová profese',
+        this.agents[role.id].name+' se vlastní zkušeností vypracoval na '+role.role+'.','◈');
       const aged=ageResidents(this.agents,endingDay);
       for(const event of populationDay(this,endingDay)){
         if(event.kind==='partnership')this.addEvent('Nové partnerství',
@@ -1048,6 +1107,8 @@ class Civilization {
         weather:this.weather.kind,houseCount:this.material.structures.filter(b=>b.type==='house').length,
         food:this.food,day:this.day
       });
+      if(a.mode==='voyage'){advanceVoyage(this,a,dt);continue;}
+      if(a.mode==='distress')continue;
       if(a.mode==='idle'){this.decide(a);continue;}
       if(a.mode==='walk' && a.target){
         const speedFactor=loadSpeed(this.material.cargo(a));

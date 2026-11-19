@@ -30,12 +30,12 @@ import {Civilization,terrainHeight,clamp,dist,rand,rng,seeded,points,names,color
 const el = id => document.getElementById(id);
 class Diorama {
   constructor(container,sim){
-    this.sim=sim;this.container=container;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#c8dfdd');this.scene.fog=new THREE.Fog('#c8dfdd',60,140);
+    this.sim=sim;this.container=container;this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#c8dfdd');this.scene.fog=new THREE.Fog('#c8dfdd',65,205);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.7));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.43;
     container.appendChild(this.renderer.domElement);
     this.camera=new THREE.PerspectiveCamera(47,1,.1,250);this.resetCamera();
-    this.controls=new OrbitControls(this.camera,this.renderer.domElement);this.controls.enableDamping=true;this.controls.dampingFactor=.07;this.controls.minDistance=13;this.controls.maxDistance=90;this.controls.maxPolarAngle=Math.PI*.46;this.controls.minPolarAngle=.22;this.controls.target.set(0,1.5,0);this.controls.enablePan=true;this.controls.screenSpacePanning=true;this.controls.maxTargetRadius=32;
+    this.controls=new OrbitControls(this.camera,this.renderer.domElement);this.controls.enableDamping=true;this.controls.dampingFactor=.07;this.controls.minDistance=13;this.controls.maxDistance=175;this.controls.maxPolarAngle=Math.PI*.46;this.controls.minPolarAngle=.22;this.controls.target.set(0,1.5,0);this.controls.enablePan=true;this.controls.screenSpacePanning=true;this.controls.maxTargetRadius=115;
     this.ambient=new THREE.HemisphereLight('#edffff','#768b68',2.4);this.scene.add(this.ambient);
     this.clearSky=new THREE.Color('#c8dfdd');this.nightSky=new THREE.Color('#627c84');this.rainSky=new THREE.Color('#869a9b');
     const sun=new THREE.DirectionalLight('#ffeed6',3.5);sun.position.set(-20,43,24);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-49;sun.shadow.camera.right=49;sun.shadow.camera.top=49;sun.shadow.camera.bottom=-49;sun.shadow.camera.near=1;sun.shadow.camera.far=110;sun.shadow.bias=-.00022;this.scene.add(sun);this.sun=sun;
@@ -53,7 +53,23 @@ class Diorama {
       vertices.push(color.r,color.g,color.b);
     }groundGeo.setAttribute('color',new THREE.Float32BufferAttribute(vertices,3));groundGeo.computeVertexNormals();
     const land=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({map:createGroundTexture(THREE),vertexColors:true,roughness:1,side:THREE.DoubleSide}));land.receiveShadow=true;this.scene.add(land);
-    const water=new THREE.Mesh(new THREE.PlaneGeometry(190,190),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
+    // Separate terrain mesh on the same exact deterministic second-island heightfield.
+    const farGeo=new THREE.PlaneGeometry(54,54,70,70);
+    farGeo.rotateX(-Math.PI/2);
+    const farPos=farGeo.attributes.position,farColors=[];
+    const farGrass=new THREE.Color('#91b17b'),farBeach=new THREE.Color('#c0b08b');
+    for(let i=0;i<farPos.count;i++){
+      const x=farPos.getX(i)+86,z=farPos.getZ(i),h=terrainHeight(x,z);
+      farPos.setY(i,h);
+      const c=farGrass.clone().multiplyScalar(.86+.15*Math.sin(x*.43+z*.52));
+      if(h<-.20)c.lerp(farBeach,clamp((-.20-h)*1.05,0,.92));
+      farColors.push(c.r,c.g,c.b);
+    }
+    farGeo.setAttribute('color',new THREE.Float32BufferAttribute(farColors,3));
+    farGeo.computeVertexNormals();
+    const farLand=new THREE.Mesh(farGeo,land.material);
+    farLand.position.x=86;farLand.receiveShadow=true;this.scene.add(farLand);
+    const water=new THREE.Mesh(new THREE.PlaneGeometry(270,270),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
     this.addCamp();
     this.treeModels=[];this.berryModels=[];this.saplingModels=[];
     this.boulderModels=[];this.fallenLogModels=[];
@@ -167,7 +183,12 @@ class Diorama {
     this.camera.position.lerp(cameraGoal,Math.min(.4,time*8+.04));
     this.camera.lookAt(avatar.x,y+1.25,avatar.z);
   }
-  resetCamera(){this.camera?.position.set(29,37,48);if(this.controls){this.controls.target.set(0,1.4,0);this.controls.update();}}
+  focusIsland(far){
+    const x=far?86:0;
+    this.camera.position.set(x+29,37,48);
+    if(this.controls){this.controls.target.set(x,1.4,0);this.controls.update();}
+  }
+  resetCamera(){this.focusIsland(false);}
   addCamp(){
     // No raised, perfectly circular beige platform: terrain decals now form
     // irregular trampled soil directly on the real ground surface.
@@ -447,7 +468,8 @@ class Diorama {
       const g=this.people[i];g.visible=isLiving(a);
       g.scale.setScalar(isDependent(a)?.62:1);
       if(!isLiving(a))return;
-      g.position.set(a.x,terrainHeight(a.x,a.z)+.04+(a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),a.z);
+      g.position.set(a.x,(a.mode==='voyage'?this.water.position.y+.32:terrainHeight(a.x,a.z)+.04)+
+        (a.mode==='walk'?Math.sin(this.timer*9+i)*.055:0),a.z);
       if(a.mode==='walk' && a.target){const target=a.waypoints?.[0]||a.target;
         const dx=target.x-a.x,dz=target.z-a.z;
         if(Math.hypot(dx,dz)>.08)g.rotation.y=Math.atan2(dx,dz);}
@@ -505,7 +527,44 @@ class Diorama {
     this.fire.scale.y=lit?(.3+actualHeat/130)*(1+Math.sin(this.timer*9)*.14):.01;
     this.updateVisitor(time);
     if(this.sim.avatar.mode==='observer')this.controls.update();
+    this.syncSeaLife();
     this.renderer.render(this.scene,this.camera);
+  }
+  syncSeaLife(){
+    if(!this.seaVessels)this.seaVessels=new Map();
+    if(!this.seaPredators)this.seaPredators=new Map();
+    for(const vessel of this.sim.islands?.vessels||[]){
+      let m=this.seaVessels.get(vessel.id);
+      if(!m){
+        const boat=vessel.type==='boat';
+        const base=new THREE.Mesh(new THREE.BoxGeometry(boat?4.4:2.9,.34,boat?1.7:2.1),
+          new THREE.MeshStandardMaterial({color:boat?'#785137':'#947050',roughness:.87}));
+        if(boat){
+          const keel=new THREE.Mesh(new THREE.CylinderGeometry(.61,.31,4.55,10),
+            new THREE.MeshStandardMaterial({color:'#65472f',roughness:.84}));
+          keel.rotation.z=Math.PI/2;keel.position.y=-.22;base.add(keel);
+        }else{
+          for(let i=-1;i<=1;i++){
+            const log=new THREE.Mesh(new THREE.CylinderGeometry(.22,.22,3.2,8),
+              new THREE.MeshStandardMaterial({color:'#806342',roughness:.94}));
+            log.rotation.z=Math.PI/2;log.position.z=i*.63;base.add(log);
+          }
+        }
+        m=base;this.scene.add(m);this.seaVessels.set(vessel.id,m);
+      }
+      m.position.set(vessel.x,this.water.position.y+.17,vessel.z);
+    }
+    for(const beast of this.sim.islands?.predators||[]){
+      let m=this.seaPredators.get(beast.id);
+      if(!m){
+        m=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),
+          new THREE.MeshStandardMaterial({color:'#426c65',roughness:.7}));
+        m.scale.set(1.8,.45,.7);
+        this.scene.add(m);this.seaPredators.set(beast.id,m);
+      }
+      m.position.set(beast.x,this.water.position.y-.18+Math.sin(this.timer*2+beast.id)*.06,beast.z);
+      m.rotation.y=Math.sin(this.timer*.5+beast.id)*.25;
+    }
   }
   resize(){const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h,false);}
 }
@@ -577,7 +636,8 @@ function drawPersonalKnowledgeMap(knowledge, person){
   if(!ctx)return;
   const w=canvas.width,h=canvas.height;
   const scale=Math.min((w-28)/74,(h-24)/74);
-  const xToScreen=x=>w/2+x*scale, zToScreen=z=>h/2+z*scale;
+  const centerX=person.x>58?86:0;
+  const xToScreen=x=>w/2+(x-centerX)*scale, zToScreen=z=>h/2+z*scale;
   ctx.clearRect(0,0,w,h);
   const background=ctx.createLinearGradient(0,0,w,h);
   background.addColorStop(0,'#172820');background.addColorStop(1,'#101d1b');
@@ -599,7 +659,7 @@ function drawPersonalKnowledgeMap(knowledge, person){
   }
   ctx.beginPath();ctx.arc(xToScreen(0),zToScreen(0),4,0,Math.PI*2);
   ctx.fillStyle='#e8c88c';ctx.fill();
-  ctx.fillStyle='#e8c88c';ctx.font='11px sans-serif';ctx.fillText('Tábor',xToScreen(0)+9,zToScreen(0)-7);
+  ctx.fillStyle='#e8c88c';ctx.font='11px sans-serif';ctx.fillText(centerX?'Druhý ostrov':'Tábor',xToScreen(centerX)+9,zToScreen(0)-7);
   for(const r of knowledge.resources){
     const x=xToScreen(r.x),z=zToScreen(r.z);
     if(x<4||x>w-4||z<4||z>h-4)continue;
@@ -747,6 +807,8 @@ function renderUI(){
     if(el('map-trails'))el('map-trails').textContent=sim.paths.summary().trails;
     if(el('map-hauls'))el('map-hauls').textContent=sim.material.logistics.constructionDeliveries;
     if(el('map-carrying'))el('map-carrying').textContent=sim.material.countCarried();
+    if(el('map-crossings'))el('map-crossings').textContent=sim.islands.crossings;
+    if(el('map-vessels'))el('map-vessels').textContent=sim.islands.vessels.length;
     if(el('visitor-status'))el('visitor-status').textContent=
       PLAYER_LABELS[sim.avatar.mode]+' · dary '+(sim.avatar.gifts||0)+
       ' · šipky / WASD / dotyk';
@@ -947,7 +1009,16 @@ el('help-modal').addEventListener('click',e=>{if(e.target===el('help-modal'))el(
 document.addEventListener('keydown',e=>{if(e.key==='Escape')el('help-modal').classList.add('hidden');if(e.code==='Space' && e.target.tagName!=='BUTTON'){e.preventDefault();el('btn-pause').click();}});
 try{
   world=new Diorama(el('scene'),sim);
-  el('btn-reset-camera').addEventListener('click',()=>world.resetCamera());
+  let viewingFar=false;
+  el('btn-far-island')?.addEventListener('click',()=>{
+    viewingFar=!viewingFar;
+    world.focusIsland(viewingFar);
+    el('btn-far-island').textContent=viewingFar?'První ostrov':'Druhý ostrov';
+  });
+  el('btn-reset-camera').addEventListener('click',()=>{
+    viewingFar=false;world.resetCamera();
+    if(el('btn-far-island'))el('btn-far-island').textContent='Druhý ostrov';
+  });
   const clock=new THREE.Clock();let uiTime=0;
   function frame(){
     requestAnimationFrame(frame);
