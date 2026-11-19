@@ -13,6 +13,8 @@ import {Footpaths} from '../src/footpaths.js';
 import {decideCommunityProject} from '../src/settlement-planner.js';
 import {SocialDynamics} from '../src/social-dynamics.js';
 import {loadSpeed} from '../src/carry-poses.js';
+import {initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS} from '../src/construction-stages.js';
+import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS} from '../src/avatar-modes.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,isBlocked} from '../src/spatial-world.js';
 import {
   initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
@@ -29,6 +31,8 @@ const context=vm.createContext({
   console,Math,MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO,
   initializeBiography,lifeEvent,experienceSkill,makeLifeCard,
   Footpaths,decideCommunityProject,SocialDynamics,loadSpeed,
+  initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS,
+  createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS,
   solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,
   initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
   learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode,
