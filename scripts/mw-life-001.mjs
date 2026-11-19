@@ -26,7 +26,11 @@ while(sim.seconds<endSeconds){
 }
 const results={
   test:'MW-LIFE-001',durationDays:days,initialLiving:30,
-  final:livingSummary(sim.agents),structures:sim.material.structures.length,
+  final:livingSummary(sim.agents),
+  mortality:Object.fromEntries([...new Set(sim.agents.filter(p=>!p.alive)
+    .map(p=>p.deathCause||'neuvedeno'))].map(cause=>[cause,
+      sim.agents.filter(p=>!p.alive&&(p.deathCause||'neuvedeno')===cause).length])),
+  structures:sim.material.structures.length,
   builtWithPhases:sim.material.structures.filter(s=>s.groundPrepared&&s.scaffoldingDismantled).length,
   inventory:sim.material.countAll(),initialInventory:baseline,
   trail:sim.paths.summary(),water:sim.springs.reduce((n,s)=>n+s.stock,0),
