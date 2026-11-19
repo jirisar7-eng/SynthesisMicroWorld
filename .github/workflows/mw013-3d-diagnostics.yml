@@ -24,6 +24,8 @@ jobs:
           node-version: "24"
       - name: Install dependencies without external asset sync
         run: npm install --no-audit --no-fund --ignore-scripts --no-package-lock
+      - name: Check safe web-only VPS apply script syntax
+        run: bash -n deploy/vps/mw011/web-only-diagnostics.sh
       - name: All simulation and 3D error classification tests
         run: npm test
       - name: Build production viewer bundle
