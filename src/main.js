@@ -279,6 +279,13 @@ class Civilization {
       this.go(a,'rest',{x:rand(-3,3),z:rand(-3,3)},dark?'Je noc a chce se vyspat.':'Je unavený a potřebuje odpočinek.');return;
     }
     if(need==='social' && this.seekConversation(a))return;
+    if(a.helpVisitorPending && this.avatar.mode==='poor' && this.food>6&&a.energy>30){
+      const source=this.material.findFoodSource();
+      a.helpVisitorPending=false;
+      if(source&&this.go(a,'pickupVisitorGift',source.container,
+        'Dobrovolně chce nabídnout chudému poutníkovi skutečnou potravu.',
+        {itemId:source.item.id}))return;
+    }
     // Construction is requested by needs, the site is chosen from actual terrain
     // and personally explored places, never from a hardcoded list.
     if(!this.construction){
@@ -482,6 +489,34 @@ class Civilization {
     }
     if(a.purpose==='gradeSite'){
       this.work(a,'grading',10,'Srovnává a hutní podklad pro rovnou podlahu.');return;
+    }
+    if(a.purpose==='pickupVisitorGift'){
+      const itemId=a.resource?.itemId;
+      if(itemId&&this.material.pickupStorage(a,[itemId])){
+        a.carry=1;a.carryType='berry';
+        this.go(a,'giveVisitor',this.avatar,'Nese vlastníma rukama dar cizinci.');
+        return;
+      }
+      this.idle(a);return;
+    }
+    if(a.purpose==='giveVisitor'){
+      if(this.avatar.mode!=='poor'){
+        this.go(a,'deliverDropped',{x:0,z:0},'Poutník zmizel. Vezme jídlo zpět do osady.');
+        return;
+      }
+      if(dist(a,this.avatar)>2.8){
+        this.go(a,'giveVisitor',this.avatar,'Poutník se posunul. Hledá k němu bezpečnou cestu.');
+        return;
+      }
+      const gift=this.material.giveToVisitor(a,this.avatar);
+      if(gift){
+        a.carry=0;a.carryType=null;this.avatar.gifts=(this.avatar.gifts||0)+1;
+        this.addEvent('Skutečný dar poutníkovi',
+          a.name+' samostatně předal kus '+gift.type+' z osadních zásob chudému poutníkovi.','♡');
+        remember(a,'Pomohl poutníkovi skutečným jídlem');
+        a.mood=clamp(a.mood+5,0,100);
+      }
+      this.idle(a);return;
     }
     if(a.purpose==='pickupBuild'){
       const order=a.resource;
@@ -835,8 +870,9 @@ class Civilization {
         if(encounter.kind==='god'){
           lifeEvent(a,this.day,'Spatřil božské zjevení',encounter.text);
           this.addEvent('Bůh mezi obyvateli',a.name+' spatřil boha a raduje se.','✦');
-        }else if(encounter.helpful&&this.material.foodCount()>2){
-          this.addEvent('Soucit s poutníkem',a.name+' uvažuje o pomoci chudému cizinci.','♡');
+        }else if(encounter.helpful&&this.material.foodCount()>5){
+          a.helpVisitorPending=true;
+          this.addEvent('Soucit s poutníkem',a.name+' se samostatně rozhoduje, zda pomůže chudému cizinci.','♡');
         }
       }
       const discoveries=observeNearby(a,{trees:this.trees,berries:this.berries,stones:this.stones,apples:this.apples},this.seconds,7.5);
@@ -934,7 +970,9 @@ class Diorama {
     this.inventoryVisuals.bindCarriers(this.people);
     this.inventoryVisuals.sync(sim.material);
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
-    this.visitor=this.makeVisitor();this.lastPropRefresh=0;
+    this.visitor=this.makeVisitor();
+    this.inventoryVisuals.carriers.set('visitor',this.visitor.group);
+    this.lastPropRefresh=0;
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
     const canvas=this.renderer.domElement;let start={x:0,y:0};
     canvas.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
@@ -1000,7 +1038,10 @@ class Diorama {
       const foot=this.mesh(new THREE.CylinderGeometry(.12,.13,.58,7),clothes,sign*.19,.32,0);
       legs.push(foot);group.add(foot);
     }
-    group.add(body,head,hood,halo);group.visible=false;this.scene.add(group);
+    group.add(body,head,hood,halo);
+    const cargoAnchor=new THREE.Group();cargoAnchor.position.set(0,1.03,.47);
+    group.add(cargoAnchor);group.userData.cargoAnchor=cargoAnchor;
+    group.visible=false;this.scene.add(group);
     return {group,body,head,hood,halo,legs,clothes,cape};
   }
   updateVisitor(time){
@@ -1551,7 +1592,8 @@ function renderUI(){
     if(el('map-hauls'))el('map-hauls').textContent=sim.material.logistics.constructionDeliveries;
     if(el('map-carrying'))el('map-carrying').textContent=sim.material.countCarried();
     if(el('visitor-status'))el('visitor-status').textContent=
-      PLAYER_LABELS[sim.avatar.mode]+' · šipky / WASD nebo dotykový ovladač';
+      PLAYER_LABELS[sim.avatar.mode]+' · dary '+(sim.avatar.gifts||0)+
+      ' · šipky / WASD / dotyk';
   }
   if(document.body.classList.contains('page-overview'))renderMaterialLedger();
   renderLifePage();
