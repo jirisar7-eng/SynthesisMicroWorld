@@ -159,3 +159,18 @@ test('founders can visibly spot drinking water, but must physically approach to 
   assert.ok(a.cognition.resources['spring:spring-1']);
   assert.equal(drinkFromSpring(source,a),false);
 });
+
+test('a missing conversation partner cannot freeze a citizen until starvation',()=>{
+  const sim=new Civilization(),first=sim.agents[0],second=sim.agents[1];
+  for(const agent of [first,second]){
+    agent.mode='waiting';agent.purpose='waiting';agent.conversation=99;
+    agent.choiceAt=Infinity;agent.hunger=80;agent.thirst=85;
+  }
+  sim.meetings.set(99,{first:first.id,second:second.id,
+    ready:new Set([first.id]),done:false,startedAt:sim.seconds-60});
+  sim.update(1);
+  assert.equal(sim.meetings.has(99),false);
+  assert.equal(first.conversation,null);assert.equal(second.conversation,null);
+  assert.equal(first.mode,'idle');assert.equal(second.mode,'idle');
+  assert.ok(Number.isFinite(first.choiceAt));
+});
