@@ -86,3 +86,50 @@ test('MW-STOCK-007: allocating mixed goods shares positions within one crate',()
   assert.notEqual(locationA.x.toFixed(2)+','+locationA.z.toFixed(2)+','+locationA.height.toFixed(2),
     locationB.x.toFixed(2)+','+locationB.z.toFixed(2)+','+locationB.height.toFixed(2));
 });
+
+
+test('MW-STOCK-008: seed trays cannot grow upward with 20,000 pieces',()=>{
+  const c=container('tray','seedtray');
+  const seed={id:9,type:'seed'};
+  const slots=Array.from({length:20000},(_,i)=>layoutStockItem(seed,c,i));
+  assert.ok(slots.every(s=>Number.isFinite(s.x)&&Number.isFinite(s.z)&&Number.isFinite(s.height)));
+  assert.ok(Math.max(...slots.map(s=>s.height))<=.16,
+    'seed overflow must never form a high column');
+  assert.ok(slots.slice(20).every(s=>Math.hypot(s.x-c.x,s.z-c.z)>1),
+    'overflow must not occupy the already-full tray');
+  const overflow=slots.slice(20,80);
+  assert.ok(new Set(overflow.map(s=>Math.round(s.x))).size>2,
+    'overflow occupies independent areas rather than a single strip');
+  assert.ok(new Set(overflow.map(s=>Math.round(s.z))).size>2);
+});
+
+test('MW-STOCK-009: basket remains lower than its rim and never grows into a tower',()=>{
+  const c=container('basket','basket-1');
+  const apple={id:3,type:'apple'};
+  const slots=Array.from({length:500},(_,i)=>layoutStockItem(apple,c,i));
+  assert.ok(Math.max(...slots.map(s=>s.height))<.5);
+  assert.ok(slots.slice(12).every(s=>Math.hypot(s.x-c.x,s.z-c.z)>1));
+  const all=new Set(slots.map(s=>`${s.x.toFixed(4)},${s.z.toFixed(4)},${s.height.toFixed(4)}`));
+  assert.equal(all.size,slots.length,'each item retains a distinct physical slot');
+});
+
+test('MW-STOCK-010: thousands of logs and stones form multiple low 2D piles',()=>{
+  for(const [type,id,limit] of [['wood','woodpile',1.1],['stone','stonepile',.7]]){
+    const c=container('pile',id),item={id:10,type};
+    const positions=Array.from({length:10000},(_,i)=>layoutStockItem(item,c,i));
+    assert.ok(Math.max(...positions.map(p=>p.height))<=limit);
+    const piles=type==='wood'?36:26;
+    const centers=Array.from({length:25},(_,i)=>positions[i*piles]);
+    assert.ok(new Set(centers.map(p=>Math.round(p.x))).size>=4);
+    assert.ok(new Set(centers.map(p=>Math.round(p.z))).size>=4);
+    assert.ok(centers.some(p=>p.x<c.x&&p.z<c.z), '2D piles spread to different quadrants');
+    assert.ok(centers.some(p=>p.x>c.x&&p.z>c.z));
+  }
+});
+
+test('MW-STOCK-011: layout remains stable and deterministic across saved-world redraws',()=>{
+  const c=container('tray','seedtray'),item={id:901,type:'seed'};
+  for(const i of [0,19,20,21,100,800,2000]){
+    assert.deepEqual(layoutStockItem(item,c,i),layoutStockItem(item,c,i));
+  }
+});
