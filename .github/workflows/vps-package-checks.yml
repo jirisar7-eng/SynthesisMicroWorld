@@ -1,0 +1,48 @@
+name: MicroWorld VPS Deployment Package
+on:
+  push:
+    branches:
+      - deploy/vps-mw-001
+  pull_request:
+    paths:
+      - 'deploy/vps/**'
+      - '.dockerignore'
+      - '.github/workflows/vps-package-checks.yml'
+permissions:
+  contents: read
+jobs:
+  deployment-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact version
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check scripts syntax
+        run: |
+          bash -n deploy/vps/preflight.sh
+          bash -n deploy/vps/deploy.sh
+      - name: Validate isolated Compose topology
+        env:
+          MICROWORLD_RELEASE: ci
+          MICROWORLD_PORT: "18583"
+        run: |
+          docker compose --project-name microworld_private -f deploy/vps/compose.yaml config -q
+          docker compose --project-name microworld_private -f deploy/vps/compose.yaml config |
+            grep -F '127.0.0.1'
+      - name: Build real static Docker image and run simulation tests
+        run: docker build --tag local/microworld:vps-ci --file deploy/vps/Dockerfile .
+      - name: Smoke test local-only HTTP routes
+        run: |
+          set -euo pipefail
+          docker run --rm --detach --name microworld-vps-ci --publish 127.0.0.1:18583:8080 local/microworld:vps-ci
+          trap 'docker rm -f microworld-vps-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:18583/healthz >/dev/null; then break; fi
+            sleep 2
+          done
+          for route in svet prehled lide; do
+            curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:18583/$route/"
+          done
+          echo "MW_VPS_PACKAGE_PASS: Docker runtime 200, all three SPA routes 200, localhost binding only"
