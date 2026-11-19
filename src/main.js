@@ -153,7 +153,11 @@ class Diorama {
         shadowMaps:this.renderer.shadowMap.enabled,
         shoreBands:this.shoreVisuals.children.length,
         seaTexture:!!this.water.material.map,
-        cloudMinAltitude:this.cloudAltitudeMin??0
+        cloudMinAltitude:this.cloudAltitudeMin??0,
+        cameraPolarDeg:Math.atan2(
+          Math.hypot(this.camera.position.x-this.controls.target.x,
+            this.camera.position.z-this.controls.target.z),
+          this.camera.position.y-this.controls.target.y)*180/Math.PI
       })
     });
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
