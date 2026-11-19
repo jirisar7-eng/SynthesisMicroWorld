@@ -96,7 +96,9 @@ export function populationDay(world,day){
       const starvation=(a.hunger??0)>98?3:0;
       const dehydration=(a.thirst??0)>99?5:0;
       const old=(a.profile.age>=85?Math.min(8,(a.profile.age-84)*.4):0);
-      a.health=Math.max(0,a.health-starvation-dehydration-old);
+      const recovery=a.health>0&&starvation===0&&dehydration===0&&
+        a.hunger<65&&a.thirst<65&&a.energy>35?1:0;
+      a.health=Math.min(100,Math.max(0,a.health-starvation-dehydration-old+recovery));
     }else{
       // Dependency is explicit: children need adults, not independent jobs.
       // Needs are deliberately NOT satisfied here: caregivers must transport
