@@ -145,6 +145,7 @@ class Civilization {
     const sourceType=purpose==='wood'?'tree':purpose==='berries'?'berry':purpose==='stone'?'stone':purpose==='apples'?'apple':null;
     const provenance=sourceType&&resource?a.cognition.resources[sourceType+':'+resource.id]?.origin||'unknown':'own';
     decision(a,this.seconds,purpose,reason,provenance);
+    return true;
   }
   work(a,purpose,duration,reason){
     a.mode='work';a.purpose=purpose;
@@ -188,6 +189,29 @@ class Civilization {
   decide(a){
     if(this.seconds<a.choiceAt)return;
     this.syncStock();
+    // Social travel is a persistent real-world state: if a walking route was
+    // obstructed mid-trip, citizens retry when terrain becomes available.
+    // They must not get stranded in a status that normal decisions ignore.
+    if(a.social?.status==='preparing'){
+      this.go(a,'departWood',this.material.containers.get('woodpile'),
+        'Znovu hledá průchod ke dřevu potřebnému pro vlastní tábor.');
+      return;
+    }
+    if(a.social?.status==='travelling'){
+      if(this.material.cargo(a).some(item=>item.type==='wood')){
+        this.go(a,'departCamp',a.social.site,
+          'Znovu hledá bezpečnou cestu do vlastního tábora.');
+      }else{
+        a.social.status='resident';a.social.site=null;
+        this.idle(a);
+      }
+      return;
+    }
+    if(a.social?.status==='returning'){
+      this.go(a,'returnHome',{x:0,z:0},
+        'Znovu hledá průchod do osady, aniž by překračoval překážky.');
+      return;
+    }
     // A frustrated citizen may voluntarily leave a settlement and live in a tent.
     // This is a real physical trip with wood and food carried from separate storages.
     if(a.social?.status==='camping'){
