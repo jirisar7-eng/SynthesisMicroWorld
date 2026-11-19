@@ -106,7 +106,7 @@ export class MaterialRenderer {
       const pos=economy.itemLayout(item);
       const container=economy.containers.get(item.container);
       const y=ground(this.height,pos.x,pos.z)+
-        (container?.kind==='basket'?.30:container?.kind==='crate'?.28:.15)+
+        (container?.kind==='carry'?1.15:container?.kind==='site'?.18:container?.kind==='basket'?.30:container?.kind==='crate'?.28:.15)+
         (item.type==='grain'?.23:0);
       mesh.position.set(pos.x,y,pos.z);
       if(item.type==='wood'){
