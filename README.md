@@ -58,6 +58,23 @@ This Preview is a first physically grounded economy, not a finished settlement o
 
 Private adult-simulation and future self-hosted VPS roadmap: [docs/private-living-world-18plus.md](docs/private-living-world-18plus.md). A Vercel Preview is not a private hosting guarantee. Do not run public Production or migrate to VPS without explicit user instruction and access controls.
 
+## MW-006B — Living Settlement (current Preview)
+
+**Current visible increment:** the island learns where its citizens walk. Roads are **emergent** patches formed from foot traffic; players cannot paint roads or command people directly.
+
+- Gathered resources are distinct physical objects while carried by a named citizen. They are not available for shared use until that citizen reaches an appropriate real storage point.
+- Autonomous buildings are placed from explored terrain, footprint collision constraints, slopes, material requirements and existing traffic. Builders physically move all reserved logs and stones from stockpiles to a construction site in finite loads.
+- Warehouse roofs do not magically relocate inventory. When built, NPCs can accept real jobs to transport outdoor wood, food and other items under cover. Exposed wood gets wet in rain and yields less heat; covered wood dries.
+- Personal meals require the NPC to go to the actual food-storage container. Food privately left in a remote tent is not treated as communal inventory.
+- Each NPC's daily comfort, hunger, loneliness, exhaustion and weather affect personal social tension. Sometimes a frustrated adult NPC who has explored a safe distant location may choose to leave, collect two logs and two food items, pitch a visible tent, eat from its own supplies, and return days later. None of this is directly commanded by the player.
+- Actual two-person conversations can improve trust, share personally known information, or become disputes under accumulated tension. Disputes cannot magically share knowledge or count as friendship.
+- The world HUD shows trail and delivery counts; `/prehled/` shows stock in transit, construction-site inventory and community tension; `/lide/` shows individual frustration, present situation and biographical timeline.
+- Terrain visuals now include a subtle procedural soil grain and tree-sway motion, while keeping the low-poly base scene as a mobile-compatible Preview.
+
+**Tests:** standalone unit tests and headless multi-day full-simulation runs are included in GitHub Actions. See [MW-006B acceptance and remaining limits](docs/mw-006b-acceptance.md).
+
+**Not yet implemented:** durable multi-settlement life, full inter-village trade and warfare, births and generations, complete mature relationships, realistic animations/materials, persistent savegames, physical pathfinding and fully continuous VPS-hosted simulation. These are planned but cannot honestly be marked complete.
+
 ## Development
 
 ```bash
