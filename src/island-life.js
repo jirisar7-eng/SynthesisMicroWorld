@@ -78,7 +78,7 @@ export function discoverFarShore(world,agent){
 function canTravel(world,agent,side){
   return isLiving(agent)&&!isDependent(agent)&&agent.energy>=64&&agent.thirst<58&&
     agent.hunger<65&&(agent.health??100)>48&&agent.social?.status==='resident'&&
-    (side==='far'||knowledge(agent).islands.far?.seen);
+    (side==='home'||knowledge(agent).islands.far?.seen);
 }
 /** Called only after life/food/childcare checks. Nobody receives direct commands. */
 export function considerCoast(world,agent){
