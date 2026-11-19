@@ -99,11 +99,16 @@ export class MaterialRenderer {
     for(const [id,mesh] of this.itemMeshes)if(!existing.has(id)){
       this.group.remove(mesh);this.itemMeshes.delete(id);
     }
+    // One indexed layout pass: avoids O(n²) scans on mobile as stocks grow.
+    const offsets=new Map();
     // Exact accounting: 1 object in data -> 1 visible piece (LOD may vary later).
     for(const item of economy.items){
+      const key=item.container+':'+item.type;
+      const ordinal=offsets.get(key)||0;
+      offsets.set(key,ordinal+1);
       let mesh=this.itemMeshes.get(item.id);
       if(!mesh){mesh=pieceFor(item);this.itemMeshes.set(item.id,mesh);this.group.add(mesh);}
-      const pos=economy.itemLayout(item);
+      const pos=economy.itemLayout(item,ordinal);
       const container=economy.containers.get(item.container);
       const y=ground(this.height,pos.x,pos.z)+
         (container?.kind==='carry'?1.15:container?.kind==='site'?.18:container?.kind==='basket'?.30:container?.kind==='crate'?.28:.15)+
