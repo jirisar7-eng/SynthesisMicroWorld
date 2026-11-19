@@ -1019,7 +1019,7 @@ function renderUI(){
     'Další zásah za '+Math.ceil(remaining)+' herních sekund · lidé stále rozhodují sami':
     'Můžeš změnit podmínky světa. Každý zásah se zapíše do historie.';
 }
-el('btn-next-npc').addEventListener('click',()=>chooseAgent((selectedAgent+1)%sim.agents.length));
+el('btn-next-npc').addEventListener('click',()=>chooseAgent(sim.agents[(selectedAgent+1)%sim.agents.length]?.id));
 for(const button of document.querySelectorAll('[data-god]')){
   button.addEventListener('click',()=>{
     const kind=button.dataset.god;
@@ -1168,6 +1168,34 @@ function showSceneFailure(error,stage){
   root.append(panel);
 }
 
+/** A failed details/card repaint cannot take the entire 3D view down.
+ * Keep the error readable without devtools and without logging credentials. */
+let lastUIError='';
+function showUIFailure(error,stage){
+  const result=describeSceneFailure(error,stage);
+  if(lastUIError!==result.diagnostic){
+    console.error('MW015_UI_FAILURE',result.diagnostic,error);
+    lastUIError=result.diagnostic;
+  }
+  let elError=el('ui-failure');
+  if(!elError){
+    elError=document.createElement('aside');
+    elError.id='ui-failure';elError.setAttribute('role','alert');
+    elError.style.cssText='position:fixed;z-index:30;top:72px;left:12px;right:12px;' +
+      'max-width:680px;margin:auto;padding:12px;background:#402820;color:#fff;' +
+      'border:1px solid #c89977;border-radius:10px;overflow-wrap:anywhere;' +
+      'font-size:12px;box-shadow:0 6px 28px #0009';
+    document.body.appendChild(elError);
+  }
+  elError.textContent='Chyba rozhraní '+result.code+' · '+result.diagnostic+
+    ' · Živý svět pokračuje. Otevři Přehled nebo zkus obnovit stránku.';
+}
+function clearUIFailure(){
+  if(!lastUIError)return;
+  lastUIError='';
+  el('ui-failure')?.remove();
+}
+
 try{
   world=new Diorama(el('scene'),sim,{
     getSelectedAgent:()=>selectedAgent,
@@ -1185,25 +1213,45 @@ try{
   };
   for(const id of ['btn-reset-camera','btn-reset-camera-menu'])
     el(id)?.addEventListener('click',resetIslandView);
-  const clock=new THREE.Clock();let uiTime=0;
+  const clock=new THREE.Clock();let uiTime=0,rendererFailed=false;
   function frame(){
+    // UI failures must NEVER terminate requestAnimationFrame: otherwise the
+    // map looks frozen while /api/world continues to show advancing days.
+    const delta=Math.min(clock.getDelta(),.06);
     try{
-      const delta=Math.min(clock.getDelta(),.06);
       const actual=paused?0:delta*speeds[speedIndex];
       if(document.body.classList.contains('page-map')&&sim.avatar.mode!=='observer')
         advanceAvatar(sim.avatar,delta,indexSolids(solidFootprints(sim)));
       if(actual&&!remoteWorldMode)sim.update(actual);
-      if(document.body.classList.contains('page-map'))world.update(delta);
-      uiTime+=delta;if(uiTime>.28){renderUI();uiTime=0;}
-      requestAnimationFrame(frame);
     }catch(error){
-      showSceneFailure(error,'frame');
+      showUIFailure(error,'simulation-frame');
     }
+    if(document.body.classList.contains('page-map')&&!rendererFailed){
+      try{world.update(delta);}
+      catch(error){
+        rendererFailed=true;
+        showSceneFailure(error,'renderer-frame');
+      }
+    }
+    uiTime+=delta;
+    if(uiTime>(remoteWorldMode?.9:.3)){
+      uiTime=0;
+      try{
+        renderUI();
+        clearUIFailure();
+      }catch(error){
+        showUIFailure(error,'ui-frame');
+      }
+    }
+    requestAnimationFrame(frame);
   }
-  events();renderUI();frame();
+  events();
+  try{renderUI();}catch(error){showUIFailure(error,'first-ui');}
+  frame();
 }catch(error){
   showSceneFailure(error,Diorama.lastStage||'initialization');
-  events();renderUI();
+  events();
+  try{renderUI();}catch(uiError){showUIFailure(uiError,'3d-fallback-ui');}
 }
 }
 launchMicroWorld().catch(error=>{
