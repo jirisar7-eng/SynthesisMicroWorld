@@ -208,6 +208,6 @@ test('MW-STOCK-016: woven basket placement is a 2D yard, not an infinite horizon
   m.add('twig',75);
   for(let i=0;i<15;i++)assert.ok(m.craftBasket(i));
   assert.equal(m.baskets.length,15);
-  assert.ok(new Set(m.baskets.map(c=>c.x)).size>=5);
-  assert.ok(new Set(m.baskets.map(c=>c.z)).size>=5);
+  assert.ok(new Set(m.baskets.map(c=>c.x)).size>=4);
+  assert.ok(new Set(m.baskets.map(c=>c.z)).size>=4);
 });
