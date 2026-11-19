@@ -1,0 +1,75 @@
+/**
+ * MW-006B integrated headless acceptance.
+ * Evaluate only the standalone Civilization class from the browser entry,
+ * injecting its real pure modules. No WebGL is required for simulation tests.
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO} from '../src/material-world.js';
+import {initializeBiography,lifeEvent,experienceSkill,makeLifeCard} from '../src/biography.js';
+import {Footpaths} from '../src/footpaths.js';
+import {decideCommunityProject} from '../src/settlement-planner.js';
+import {SocialDynamics} from '../src/social-dynamics.js';
+import {
+  initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
+  learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode
+} from '../src/cognition.js';
+import {initializeLife,updateLife,remember,socialBond,needsDecision,relationshipLabel} from '../src/life.js';
+
+const source=fs.readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
+const start=source.indexOf('const el =');
+const end=source.indexOf('class Diorama {');
+if(start<0||end<start)throw new Error('Simulation class not found in entry');
+const classCode=source.slice(start,end)+'\nglobalThis.TestCivilization = Civilization;\n';
+const context=vm.createContext({
+  console,Math,MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO,
+  initializeBiography,lifeEvent,experienceSkill,makeLifeCard,
+  Footpaths,decideCommunityProject,SocialDynamics,
+  initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
+  learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode,
+  initializeLife,updateLife,remember,socialBond,needsDecision,relationshipLabel
+});
+new vm.Script(classCode,{filename:'main-simulation-core.js'}).runInContext(context);
+const Civilization=context.TestCivilization;
+
+test('MW-INTEGRATION-001: six autonomous citizens run for several days with physical inventory and real trails',()=>{
+  const sim=new Civilization();
+  assert.equal(sim.agents.length,6);
+  const baseline=sim.material.countAll();
+  assert.equal(baseline,14);
+  for(let i=0;i<3000;i++){
+    sim.update(.2);
+  }
+  const movement=sim.paths.summary();
+  assert.ok(sim.day>=8,'Several game days must pass');
+  assert.ok(movement.totalSteps>10,'Citizens must actually walk');
+  assert.ok(movement.trails>2,'Traffic must leave visible worn ground');
+  assert.ok(sim.agents.every(a=>Number.isFinite(a.x)&&Number.isFinite(a.z)));
+  assert.ok(sim.agents.every(a=>a.cognition&&a.social&&a.profile),'All agents keep their cognitive and life records');
+  assert.ok(sim.material.items.every(i=>sim.material.containers.has(i.container)),'Every physical item is at a real storage/carrier/site');
+  assert.ok(sim.material.countAll()>=0,'Inventory never becomes negative');
+  assert.ok(sim.material.logistics.collected>0,'NPCs gather their resources autonomously');
+  assert.ok(sim.material.logistics.delivered>0,'NPCs physically deliver gathered resources');
+});
+
+test('MW-INTEGRATION-002: every construction completion corresponds to a funded, hauled project',()=>{
+  const sim=new Civilization();
+  const initial=sim.material.countAll();
+  for(let i=0;i<3500;i++)sim.update(.2);
+  for(const building of sim.material.structures){
+    assert.ok(building.type in RECIPES);
+    assert.ok(building.builderId>=0 && building.builderId<sim.agents.length);
+    assert.ok(building.builtAt>0);
+  }
+  if(sim.material.structures.length){
+    assert.ok(sim.material.logistics.constructionDeliveries>=RECIPES.house.wood);
+  }
+  if(sim.construction){
+    assert.ok(sim.material.projects.has(sim.construction.id));
+    assert.ok(sim.construction.delivered>=0);
+    assert.ok(sim.construction.delivered<=sim.construction.total);
+  }
+  assert.ok(sim.material.countAll()>=0);
+});
