@@ -7,6 +7,7 @@ import {MaterialRenderer,BuildingRenderer} from './material-renderer.js';
 import {Footpaths} from './footpaths.js';
 import {FootpathRenderer} from './footpath-renderer.js';
 import {decideCommunityProject} from './settlement-planner.js';
+import {SocialDynamics} from './social-dynamics.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
   learnOutcome, exchangeKnowledge, decision, knowledgeSummary, episode
@@ -49,6 +50,8 @@ class Civilization {
     this.stones=points(21,14,32).map((p,i)=>({...p,id:i,stock:10,maxStock:10}));
     this.apples=points(12,14,32).map((p,i)=>({...p,id:i,stock:9,maxStock:9}));
     this.agents=names.map((name,i)=>initializeBiography(initCognition(initializeLife({id:i,name,x:rand(-2.8,2.8),z:rand(-2.8,2.8),energy:75+rand(0,20),mode:'idle',purpose:'',reason:'Rozhlíží se po novém světě.',target:null,resource:null,carry:0,carryType:null,workRemaining:0,workTotal:0,choiceAt:0,speed:2+rand(0,.55),color:colors[i]},i)),i));
+    this.social=new SocialDynamics();
+    for(const agent of this.agents)this.social.initialize(agent);
     this.lastDiscoveryReport=-100;
     this.nextMeal=75;this.lastScout=-999;this.addEvent('Nový začátek','Šest obyvatel dorazilo do neznámé krajiny.','✧');
     this.addEvent('První rozhodnutí','Obyvatelé sami zjišťují, co potřebují k přežití.','◈');
@@ -130,6 +133,39 @@ class Civilization {
   decide(a){
     if(this.seconds<a.choiceAt)return;
     this.syncStock();
+    // A frustrated citizen may voluntarily leave a settlement and live in a tent.
+    // This is a real physical trip with wood and food carried from separate storages.
+    if(a.social?.status==='camping'){
+      const camp=a.social.site;
+      if(this.social.shouldReturn(a,this.seconds)){
+        if(this.social.beginReturn(a,this.seconds)){
+          this.material.packTentReturn(a,a.social.habitat);
+          a.carry=this.material.cargo(a).length;a.carryType='berry';
+          this.go(a,'returnHome',{x:0,z:0},
+            'Po čase o samotě se rozhodl vrátit do původní osady.');
+          return;
+        }
+      }
+      if(this.material.foodAtTent(a.social.habitat)>0&&a.hunger>53){
+        this.go(a,'tentEat',{x:camp.x,z:camp.z},
+          'Má vlastní jídlo v táboře a rozhodl se najíst.');return;
+      }
+      this.go(a,'campWander',{x:camp.x+rand(-1.6,1.6),z:camp.z+rand(-1.6,1.6)},
+        'Chce být nějaký čas sám. Odpočívá a přemýšlí v táboře.');return;
+    }
+    if(a.social?.status==='resident'&&!this.construction){
+      const place=this.social.canLeave(a,{
+        day:this.day,time:this.seconds,wood:this.wood,food:this.food,height:terrainHeight
+      });
+      if(place&&this.social.beginDeparture(a,place,this.seconds)){
+        this.addEvent('Rozhodnutí odejít',
+          a.name+' je dlouhodobě nespokojený. Rozhodl se na čas opustit osadu.','↗');
+        lifeEvent(a,this.day,'Rozhodl se odejít',
+          'Osobní nespokojenost '+Math.round(a.social.frustration)+' %.');
+        this.go(a,'departWood',this.material.containers.get('woodpile'),
+          'Bere si vlastní skutečné dřevo na přístřešek.');return;
+      }
+    }
     const need=needsDecision(a,this.food);
     if(need==='eat'){
       this.go(a,'eat',{x:rand(-2,2),z:rand(-2,2)},'Má hlad ('+Math.round(a.hunger)+' %) a jde se samostatně najíst.');return;
@@ -242,6 +278,61 @@ class Civilization {
       'Nezná žádný vhodný aktuální zdroj. Nejdřív musí oblast sám prozkoumat.');
   }
   arrived(a){
+    if(a.purpose==='departWood'){
+      if(this.material.packDepartureWood(a)){
+        a.carry=this.material.cargo(a).length;a.carryType='wood';
+        this.go(a,'departFood',this.material.containers.get('crate-1'),
+          'Jde osobně pro jídlo, které si odnese do nového tábora.');return;
+      }
+      a.social.status='resident';this.idle(a);return;
+    }
+    if(a.purpose==='departFood'){
+      if(this.material.packDepartureFood(a)){
+        a.carry=this.material.cargo(a).length;
+        a.social.status='travelling';
+        this.go(a,'departCamp',a.social.site,
+          'Nese vlastní dřevo a potraviny na místo, které sám objevil.');return;
+      }
+      this.material.cancelDeparture(a);a.carry=0;a.social.status='resident';this.idle(a);return;
+    }
+    if(a.purpose==='departCamp'){
+      const tent=this.material.pitchTent(a,a.social.site,this.seconds);
+      if(tent&&this.social.establishCamp(a,tent,this.seconds)){
+        a.carry=0;a.carryType=null;
+        a.profile.settlement='Samostatný tábor';
+        a.profile.departures++;
+        a.profile.home=tent.id;
+        lifeEvent(a,this.day,'Postavil si stan',
+          'Vlastními silami se přestěhoval na okraj známého světa.');
+        this.addEvent('Osamělý tábor',
+          a.name+' donesl dřevo a jídlo, postavil stan a začal žít stranou.','⛺');
+      }else{
+        a.social.status='resident';this.material.cancelDeparture(a);
+      }
+      this.idle(a);return;
+    }
+    if(a.purpose==='returnHome'){
+      const n=this.material.deliver(a);
+      this.social.arrivedHome(a,this.seconds);
+      a.profile.settlement='První osada';a.profile.home=null;
+      a.carry=0;a.carryType=null;
+      lifeEvent(a,this.day,'Vrátil se do osady',
+        'Po čase v samostatném táboře se rozhodl znovu připojit ke komunitě.');
+      this.addEvent('Návrat domů',
+        a.name+' se vrátil do původní osady. Přinesl '+n+' zbývajících zásob.','↩');
+      this.idle(a);return;
+    }
+    if(a.purpose==='tentEat'){
+      if(this.material.eatAtTent(a,a.social.habitat)){
+        a.hunger=Math.max(0,a.hunger-69);
+        remember(a,'Najedl se z vlastních zásob v táboře');
+      }
+      this.idle(a);return;
+    }
+    if(a.purpose==='campWander'){
+      this.work(a,'campLiving',6,
+        'Tráví čas o samotě, odpočívá a přemýšlí o návratu.');return;
+    }
     if(a.purpose==='pickupBuild'){
       const order=a.resource;
       if(order&&this.material.pickProjectLoad(a,order.projectId,order.ids)){
@@ -358,6 +449,11 @@ class Civilization {
     if(a.purpose==='explore'){if(this.seconds-this.lastScout>15){this.addEvent('Průzkum okolí',a.name+' prozkoumal další kus krajiny.','⌕');this.lastScout=this.seconds;}this.idle(a);}
   }
   completed(a){
+    if(a.purpose==='campLiving'){
+      a.energy=clamp(a.energy+17,0,100);
+      a.mood=clamp(a.mood+1.5,0,100);
+      this.idle(a);return;
+    }
     if(a.purpose==='eating'){
       if(this.material.consumeFood()){
         this.syncStock();a.hunger=Math.max(0,a.hunger-76);a.mood=Math.min(100,a.mood+7);
@@ -370,7 +466,20 @@ class Civilization {
       if(meeting && !meeting.done){
         meeting.done=true;
         const first=this.agents[meeting.first],second=this.agents[meeting.second];
-        socialBond(first,second);
+        const conflict=(first.social?.frustration>63||second.social?.frustration>63)&&
+          this.social.markConflict(first,second,this.seconds);
+        if(conflict){
+          lifeEvent(first,this.day,'Spor s '+second.name,'Neshodli se při rozhovoru.');
+          lifeEvent(second,this.day,'Spor s '+first.name,'Neshodli se při rozhovoru.');
+          this.addEvent('Osobní konflikt',
+            first.name+' a '+second.name+' se nepohodli. Jejich vzájemná důvěra klesla.','⚡');
+        }else{
+          socialBond(first,second);
+          first.social.frustration=Math.max(0,first.social.frustration-8);
+          second.social.frustration=Math.max(0,second.social.frustration-8);
+          lifeEvent(first,this.day,'Rozhovor s '+second.name,'Prohloubili svůj vztah.');
+          lifeEvent(second,this.day,'Rozhovor s '+first.name,'Prohloubili svůj vztah.');
+        }
         const heardA=exchangeKnowledge(second,first,this.seconds,3);
         const heardB=exchangeKnowledge(first,second,this.seconds,3);
         if(heardA.length+heardB.length){
@@ -514,6 +623,10 @@ class Civilization {
         this.lastDiscoveryReport=this.seconds;
       }
       updateLife(a,dt,this.weather.kind);
+      this.social.tick(a,dt,{
+        weather:this.weather.kind,houseCount:this.material.structures.filter(b=>b.type==='house').length,
+        food:this.food,day:this.day
+      });
       if(a.mode==='idle'){this.decide(a);continue;}
       if(a.mode==='walk' && a.target){
         const d=dist(a,a.target),step=a.speed*dt;
@@ -1050,7 +1163,7 @@ function renderLifePage(){
     pickupStore:'Přebírá zásoby',deliverStore:'Stěhuje zásoby do skladiště',
     assistBuild:'Jde pomoci staviteli',assisting:'Pomáhá stavět',explore:'Průzkum',
     eat:'Jde jíst',eating:'Jí',talking:'Rozhovor',rest:'Odpočinek',
-    resting:'Spí',meet:'Setkání'};
+    resting:'Spí',meet:'Setkání',departWood:'Nese dřevo',departFood:'Bere jídlo',departCamp:'Odchází do samoty',campWander:'Žije v táboře',campLiving:'Odpočívá stranou',returnHome:'Vrací se domů',tentEat:'Jí ve stanu'};
   el('life-task').textContent=taskNames[card.action]||card.action||'Rozhoduje se';
   el('life-mood').textContent=card.mood+' %';
   el('life-knowledge').textContent=card.knowledge;
@@ -1101,7 +1214,7 @@ function renderUI(){
   const a=sim.agents[selectedAgent];el('npc-avatar').textContent=a.name.charAt(0);el('npc-avatar').style.background='#'+new THREE.Color(a.color).getHexString();
   el('npc-name').textContent=a.name;
   el('map-npc-name').textContent=a.name;
-  const actions={wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',stone:'Cestuje ke kameni',mining:'Těží kámen',apples:'Cestuje pro jablka',applepicking:'Sbírá jablka',returnstone:'Nese kámen',weave:'Jde uplést košík',weaving:'Plete košík',plant:'Jde sázet',planting:'Vysévá semena',reap:'Jde sklízet',reaping:'Sklízí úrodu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
+  const actions={departWood:'Bere dřevo na cestu',departFood:'Vybírá vlastní jídlo',departCamp:'Odchází do samoty',campWander:'Žije v táboře',campLiving:'Odpočívá mimo osadu',tentEat:'Jí ve stanu',returnHome:'Vrací se domů',wood:'Cestuje ke stromu',harvest:'Sbírá dřevo',berries:'Hledá potravu',forage:'Sbírá bobule',returnwood:'Nese dřevo',returnfood:'Nese jídlo',build:'Jde stavět',building:'Staví přístřešek',rest:'Hledá odpočinek',resting:'Odpočívá',explore:'Prozkoumává krajinu',stone:'Cestuje ke kameni',mining:'Těží kámen',apples:'Cestuje pro jablka',applepicking:'Sbírá jablka',returnstone:'Nese kámen',weave:'Jde uplést košík',weaving:'Plete košík',plant:'Jde sázet',planting:'Vysévá semena',reap:'Jde sklízet',reaping:'Sklízí úrodu',meet:'Jde na setkání',waiting:'Čeká na přítele',talking:'Povídá si',eat:'Jde se najíst',eating:'Jí jídlo'};
   el('npc-role').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';el('npc-reason').textContent=a.reason;
   el('agent-state').textContent='ENERGIE '+Math.round(a.energy)+' %';
   el('map-npc-action').textContent=actions[a.purpose]||'Rozhoduje o dalším kroku';
