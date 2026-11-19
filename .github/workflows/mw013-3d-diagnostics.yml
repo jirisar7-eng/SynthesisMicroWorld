@@ -1,0 +1,41 @@
+name: MW-013 Mobile 3D Failure Diagnostics
+on:
+  push:
+    branches:
+      - feature/mw-013-3d-error-diagnostics
+  pull_request:
+    paths:
+      - 'src/main.js'
+      - 'src/scene-diagnostics.js'
+      - 'tests/scene-diagnostics.test.js'
+      - '.github/workflows/mw013-3d-diagnostics.yml'
+permissions:
+  contents: read
+jobs:
+  browser-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: Install dependencies without external asset sync
+        run: npm install --no-audit --no-fund --ignore-scripts --no-package-lock
+      - name: All simulation and 3D error classification tests
+        run: npm test
+      - name: Build production viewer bundle
+        env:
+          SKIP_POLYHAVEN_ASSETS: "1"
+        run: npm run build -- --target es2022
+      - name: Check renderer error reporting in generated bundle
+        run: |
+          if ! grep -rlF 'MW3D-RUNTIME' dist/assets/ >/dev/null; then
+            echo 'Runtime diagnostics are missing from the bundle';exit 1
+          fi
+          if grep -rlF '3D vykreslování není dostupné. Ověř podporu WebGL' dist/assets/; then
+            echo 'Misleading WebGL-only error reporting was retained';exit 1
+          fi
+          echo 'MW013_3D_DIAGNOSTICS_PASS'
