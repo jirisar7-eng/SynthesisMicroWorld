@@ -8,6 +8,7 @@ import {Footpaths} from './footpaths.js';
 import {FootpathRenderer} from './footpath-renderer.js';
 import {decideCommunityProject} from './settlement-planner.js';
 import {SocialDynamics} from './social-dynamics.js';
+import {createGroundTexture} from './ground-details.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
   learnOutcome, exchangeKnowledge, decision, knowledgeSummary, episode
@@ -685,7 +686,7 @@ class Diorama {
       let color=light.clone().lerp(dark,clamp((.5+Math.sin(x*1.1+z*.35)*.25+Math.cos(z*.94-x*.3)*.22),0,1)*.55);
       if(h<-.25)color.lerp(sandy,clamp((-.25-h)*1.3,0,.95));vertices.push(color.r,color.g,color.b);
     }groundGeo.setAttribute('color',new THREE.Float32BufferAttribute(vertices,3));groundGeo.computeVertexNormals();
-    const land=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide}));land.receiveShadow=true;this.scene.add(land);
+    const land=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({map:createGroundTexture(THREE),vertexColors:true,roughness:1,side:THREE.DoubleSide}));land.receiveShadow=true;this.scene.add(land);
     const water=new THREE.Mesh(new THREE.PlaneGeometry(190,190),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
     this.addCamp();this.treeModels=[];this.addForest();this.addBerries();
     this.addRocksAndGrass();this.addDeposits();this.addRain();
@@ -989,7 +990,11 @@ class Diorama {
         item.material.color.set(g.userData.carryColors[a.carryType]||'#b49b73');
       }
     });
-    for(const tree of this.treeModels)if(tree.resource.stock<=0 && tree.model.scale.y>.32)tree.model.scale.y=.32;
+    for(const tree of this.treeModels){
+      if(tree.resource.stock<=0&&tree.model.scale.y>.32)tree.model.scale.y=.32;
+      tree.model.rotation.z=Math.sin(this.timer*.72+tree.resource.id*1.9)*.012;
+      tree.model.rotation.x=Math.cos(this.timer*.61+tree.resource.id*.79)*.008;
+    }
     this.pathVisuals.update(this.sim.paths,this.sim.seconds);
     this.inventoryRefresh=(this.inventoryRefresh||0)+time;
     if(this.inventoryRefresh>.35){
