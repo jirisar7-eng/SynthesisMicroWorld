@@ -8,6 +8,7 @@ on:
       - feature/mw-006b-living-settlement
       - feature/mw-006c-natural-stockpiles
       - feature/mw-006d-carry-terrain-assets
+      - feature/mw-007-real-space
   pull_request:
     branches:
       - feature/mw-001-first-life
