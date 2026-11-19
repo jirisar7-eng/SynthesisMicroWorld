@@ -1,0 +1,53 @@
+name: MicroWorld VPS Deployment Package
+on:
+  push:
+    branches:
+      - deploy/vps-mw-001
+  pull_request:
+    paths:
+      - 'deploy/vps/**'
+      - '.dockerignore'
+      - '.github/workflows/vps-package-checks.yml'
+permissions:
+  contents: read
+jobs:
+  deployment-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact version
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check scripts syntax
+        run: |
+          bash -n deploy/vps/preflight.sh
+          bash -n deploy/vps/deploy.sh
+      - name: Validate isolated Compose topology
+        env:
+          MICROWORLD_RELEASE: ci
+          MICROWORLD_PORT: "18583"
+        run: |
+          docker compose --project-name microworld_private -f deploy/vps/compose.yaml config -q
+          docker compose --project-name microworld_private -f deploy/vps/compose.yaml config |
+            grep -F '127.0.0.1'
+      - name: Build real static Docker image and run simulation tests
+        run: docker build --tag local/microworld:vps-ci --file deploy/vps/Dockerfile .
+      - name: Smoke test exact VPS Compose topology (isolated bridge / loopback)
+        env:
+          MICROWORLD_RELEASE: vps-ci
+          MICROWORLD_PORT: "18583"
+        run: |
+          set -euo pipefail
+          stack=(docker compose --project-name microworld_private -f deploy/vps/compose.yaml)
+          "${stack[@]}" up -d --no-build --no-deps web
+          trap '"${stack[@]}" down >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:18583/healthz >/dev/null; then break; fi
+            sleep 2
+          done
+          for route in svet prehled lide; do
+            curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:18583/$route/"
+          done
+          "${stack[@]}" ps
+          echo "MW_VPS_PACKAGE_PASS: exact Compose topology, HTTP 200 on all SPA routes, local-only binding"

@@ -1,0 +1,32 @@
+# Stage 1: localhost-only VPS preview. No Caddy, DNS, public ports,
+# shared Docker networks, production containers or volumes are touched.
+name: microworld_private
+services:
+  web:
+    image: local/microworld:${MICROWORLD_RELEASE:?Set exact Git release SHA}
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+    ports:
+      - "127.0.0.1:${MICROWORLD_PORT:-18583}:8080"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,noexec,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 96
+    mem_limit: 192m
+    cpus: 0.75
+    networks:
+      - microworld_private
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+networks:
+  microworld_private:
+    driver: bridge
