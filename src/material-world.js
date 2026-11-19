@@ -1,4 +1,4 @@
-import {layoutStockItem} from './stockpile-layout.js';
+import {layoutStockItem,stockSlotGroup} from './stockpile-layout.js';
 
 /**
  * MW-006: physically accounted settlement materials.
@@ -379,7 +379,8 @@ export class MaterialWorld {
   itemLayout(item,indexOverride=null) {
     const container=this.containers.get(item.container);
     const index=indexOverride===null?
-      this.items.filter(i=>i.container===item.container&&i.type===item.type)
+      this.items.filter(i=>i.container===item.container&&
+        stockSlotGroup(i,container)===stockSlotGroup(item,container))
         .findIndex(i=>i.id===item.id):indexOverride;
     return layoutStockItem(item,container,index);
   }
