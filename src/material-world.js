@@ -46,6 +46,8 @@ export class MaterialWorld {
     this.structures=[];
     this.fields=[];
     this.tents=[];
+    this.projects=new Map();this.nextProjectId=1;
+    this.logistics={collected:0,delivered:0,transported:0,constructionDeliveries:0};
     this.fire={heat:0,lastFuel:0,lastWood:null,fuelCount:0};
     this.add('berry',14,'crate-1');
   }
@@ -68,12 +70,20 @@ export class MaterialWorld {
     }
     return result;
   }
-  count(type){return this.items.filter(x=>x.type===type).length;}
+  // Available inventory excludes items being physically carried or reserved for construction.
+  isAvailable(item){
+    if(item.reservedFor)return false;
+    const c=this.containers.get(item.container);
+    return !!c && c.kind!=='carry' && c.kind!=='site';
+  }
+  count(type){return this.items.filter(x=>x.type===type&&this.isAvailable(x)).length;}
+  countStored(type){return this.items.filter(x=>x.type===type&&this.containers.get(x.container)?.kind!=='carry').length;}
+  countCarried(){return this.items.filter(x=>this.containers.get(x.container)?.kind==='carry').length;}
   foodCount(){return FOOD_TYPES.reduce((n,t)=>n+this.count(t),0);}
   countAll(){return this.items.length;}
   consume(type,quantity=1){
     if(quantity<0||!Number.isInteger(quantity))throw new Error('Invalid quantity');
-    const candidates=this.items.filter(i=>i.type===type);
+    const candidates=this.items.filter(i=>i.type===type&&this.isAvailable(i));
     if(candidates.length<quantity)return null;
     // Dry wood burns more effectively; use stored pieces first in normal construction.
     const selected=candidates.slice(0,quantity);
@@ -107,11 +117,8 @@ export class MaterialWorld {
     if(type==='warehouse'){
       const container={id:'covered-'+id,kind:'shelves',name:'Krytý skladový přístřešek',x:x+3.9,z:z+.6,roof:true};
       this.containers.set(container.id,container);
-      for(const item of this.items) {
-        if(item.type==='wood'||item.type==='apple'||item.type==='berry'||item.type==='seed'||item.type==='grain'){
-          item.container=container.id;
-        }
-      }
+      // Nothing teleports from an outdoor heap: citizens must physically move it.
+      this.logistics.hasWarehouse=true;
     }
     if(type==='farm')this.fields.push({id:'field-'+id,x:x+3.5,z:z+.2,crop:'berry',planted:false,growth:0,water:.7,seededAt:null,crops:0,harvests:0});
     return building;
@@ -128,7 +135,7 @@ export class MaterialWorld {
   burnWood(time,weather){
     if(time-this.fire.lastFuel<21)return null;
     this.fire.lastFuel=time;
-    const wood=this.items.filter(x=>x.type==='wood').sort((a,b)=>a.wet-b.wet)[0];
+    const wood=this.items.filter(x=>x.type==='wood'&&this.isAvailable(x)).sort((a,b)=>a.wet-b.wet)[0];
     if(!wood){this.fire.heat=0;return null;}
     this.items=this.items.filter(x=>x.id!==wood.id);
     const effectiveHeat=Math.round(100*(1-wood.wet*.77));
@@ -176,22 +183,135 @@ export class MaterialWorld {
     }
     return null;
   }
+  cargoContainer(agent){
+    const id='carry-'+agent.id;
+    let container=this.containers.get(id);
+    if(!container){
+      container={id,kind:'carry',ownerId:agent.id,name:'Nese '+agent.name,x:agent.x,z:agent.z,roof:false};
+      this.containers.set(id,container);
+    }
+    return container;
+  }
+  moveCarrier(agent){
+    const bag=this.containers.get('carry-'+agent.id);
+    if(bag){bag.x=agent.x;bag.z=agent.z;}
+  }
+  collect(agent,type,quantity,details={}){
+    if(!Number.isInteger(quantity)||quantity<0)throw new Error('Invalid collection amount');
+    const cargo=this.cargoContainer(agent);
+    const made=this.add(type,quantity,cargo.id);
+    for(const item of made){item.origin=details.origin||'wilderness';item.collectedBy=agent.id;item.collectedAt=details.time||0;}
+    this.logistics.collected+=made.length;
+    this.moveCarrier(agent);
+    return made;
+  }
+  cargo(agent){return this.items.filter(i=>i.container==='carry-'+agent.id);}
+  deliver(agent,targetId=null){
+    const goods=this.cargo(agent);
+    for(const item of goods){
+      const destination=targetId||this.defaultContainer(item.type);
+      if(!this.containers.has(destination))throw new Error('Missing delivery destination '+destination);
+      item.container=destination;
+    }
+    this.logistics.delivered+=goods.length;
+    return goods.length;
+  }
+  nearestRoofedStore(){
+    return [...this.containers.values()].find(c=>c.kind==='shelves'&&c.roof)||null;
+  }
+  planStockTransfer(limit=4){
+    const dest=this.nearestRoofedStore();
+    if(!dest)return null;
+    const originals=['woodpile','crate-1','seedtray','stonepile'];
+    for(const from of originals){
+      const source=this.containers.get(from);
+      const goods=this.items.filter(i=>i.container===from&&!i.reservedFor).slice(0,limit);
+      if(goods.length)return {source,destination:dest,ids:goods.map(x=>x.id)};
+    }
+    return null;
+  }
+  pickupStorage(agent,ids){
+    const bag=this.cargoContainer(agent);
+    const stock=ids.map(id=>this.items.find(i=>i.id===id)).filter(Boolean);
+    if(stock.length!==ids.length||stock.some(i=>!this.isAvailable(i)))return false;
+    for(const item of stock)item.container=bag.id;
+    this.logistics.transported+=stock.length;
+    return true;
+  }
+  createProject(recipe,{x,z,type,builderId,time=0}){
+    if(!this.canAfford(recipe))return null;
+    const projectId='project-'+this.nextProjectId++;
+    const site={id:'site-'+projectId,kind:'site',name:'Staveniště',x,z,roof:false};
+    this.containers.set(site.id,site);
+    const items=[];
+    for(const [kind,amount] of [['wood',recipe.wood],['stone',recipe.stone]]){
+      const candidates=this.items.filter(i=>i.type===kind&&this.isAvailable(i)).slice(0,amount);
+      if(candidates.length!==amount)throw new Error('Project reservation race');
+      for(const item of candidates){item.reservedFor=projectId;items.push(item.id);}
+    }
+    const project={id:projectId,type,x,z,builderId,time,siteId:site.id,items,total:items.length,delivered:0,complete:false};
+    this.projects.set(projectId,project);
+    return project;
+  }
+  pendingProject(projectId,limit=4){
+    const project=this.projects.get(projectId);
+    if(!project)return [];
+    return project.items.map(id=>this.items.find(i=>i.id===id))
+      .filter(i=>i&&i.reservedFor===projectId&&i.container!==project.siteId&&
+        this.containers.get(i.container)?.kind!=='carry').slice(0,limit);
+  }
+  pickProjectLoad(agent,projectId,ids){
+    const project=this.projects.get(projectId);
+    if(!project||!ids.length||ids.length>5)return false;
+    const items=ids.map(id=>this.items.find(i=>i.id===id));
+    if(items.some(i=>!i||i.reservedFor!==projectId||i.container===project.siteId))return false;
+    const bag=this.cargoContainer(agent);
+    for(const item of items)item.container=bag.id;
+    this.logistics.transported+=items.length;
+    return true;
+  }
+  depositProjectLoad(agent,projectId){
+    const project=this.projects.get(projectId);
+    if(!project)return 0;
+    let n=0;
+    for(const item of this.cargo(agent)){
+      if(item.reservedFor===projectId){item.container=project.siteId;n++;}
+    }
+    project.delivered+=n;
+    this.logistics.constructionDeliveries+=n;
+    return n;
+  }
+  projectReady(projectId){
+    const project=this.projects.get(projectId);
+    return !!project&&project.delivered===project.total&&project.total>0;
+  }
+  finalizeProject(projectId){
+    const project=this.projects.get(projectId);
+    if(!this.projectReady(projectId))return false;
+    const toRemove=new Set(project.items);
+    this.items=this.items.filter(i=>!toRemove.has(i.id));
+    project.complete=true;this.projects.delete(projectId);
+    return true;
+  }
+
   itemLayout(item) {
     const container=this.containers.get(item.container);
     if(!container)return {x:0,z:0};
     const peers=this.items.filter(i=>i.container===item.container&&i.type===item.type);
     const index=peers.findIndex(i=>i.id===item.id);
     const typeOffset={wood:{x:0,z:0},twig:{x:.8,z:0},stone:{x:0,z:0},berry:{x:0,z:0},apple:{x:.7,z:0},seed:{x:0,z:0},grain:{x:1,z:0}}[item.type];
-    const perRow=container.kind==='basket'?4:container.kind==='crate'?5:9;
+    const perRow=container.kind==='carry'?3:container.kind==='site'?6:container.kind==='basket'?4:container.kind==='crate'?5:9;
     const row=Math.floor(index/perRow),col=index%perRow;
-    const spacing=container.kind==='basket'?.17:container.kind==='crate'?.21:.26;
-    return {x:container.x+typeOffset.x+(col-(perRow-1)/2)*spacing,
-      z:container.z+typeOffset.z+row*spacing};
+    const spacing=container.kind==='carry'?.25:container.kind==='basket'?.17:container.kind==='crate'?.21:.26;
+    return {x:container.x+(container.kind==='carry'?0:typeOffset.x)+(col-(perRow-1)/2)*spacing,
+      z:container.z+(container.kind==='carry'?0:typeOffset.z)+row*spacing};
   }
   snapshot(){
     const byType={};
     for(const key of Object.keys(ITEM_INFO))byType[key]=this.count(key);
-    return {byType,total:this.countAll(),food:this.foodCount(),baskets:this.baskets.length,
+    return {byType,total:this.countAll(),carried:this.countCarried(),
+      atSite:this.items.filter(i=>this.containers.get(i.container)?.kind==='site').length,
+      logistics:{...this.logistics},food:this.foodCount(),baskets:this.baskets.length,
       buildings:this.structures.length,fields:this.fields.map(f=>({...f})),
       fire:{...this.fire}};
   }
