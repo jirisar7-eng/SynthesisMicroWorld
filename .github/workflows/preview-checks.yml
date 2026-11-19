@@ -6,12 +6,14 @@ on:
       - feature/mw-005-knowledge
       - feature/mw-006-material-life
       - feature/mw-006b-living-settlement
+      - feature/mw-006c-natural-stockpiles
   pull_request:
     branches:
       - feature/mw-001-first-life
       - feature/mw-004-living-world
       - feature/mw-005-knowledge
       - feature/mw-006-material-life
+      - feature/mw-006b-living-settlement
       - main
 permissions:
   contents: read

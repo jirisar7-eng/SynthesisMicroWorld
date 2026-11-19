@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {RECIPES,ITEM_INFO} from './material-world.js';
+import {stockSlotGroup} from './stockpile-layout.js';
 
 const material=(hex,roughness=.92)=>new THREE.MeshStandardMaterial({color:hex,roughness});
 const resources={
@@ -14,11 +15,8 @@ function pieceFor(item){
   let shape;
   if(item.type==='wood'){
     shape=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,.75,7),resources.wood);
-    shape.rotation.z=Math.PI/2;
   }else if(item.type==='twig'){
     shape=new THREE.Mesh(new THREE.CylinderGeometry(.032,.05,.67,5),resources.twig);
-    shape.rotation.z=Math.PI/2;
-    shape.rotation.y=.32;
   }else if(item.type==='stone'){
     shape=new THREE.Mesh(new THREE.DodecahedronGeometry(.17,0),resources.stone);
     shape.scale.set(1.25,.72,1);
@@ -80,6 +78,47 @@ function shedMesh(container,h){
   return g;
 }
 
+function pileBaseMesh(container,height){
+  const root=new THREE.Group();
+  root.position.set(container.x,ground(height,container.x,container.z)+.01,container.z);
+  const pallet=material('#977f61'),underside=material('#78674f');
+  if(container.id==='woodpile'){
+    // Low pallet is a visual staging surface, not a free material resource.
+    for(const x of [-1.05,0,1.05]){
+      const beam=new THREE.Mesh(box(.24,.09,2.6),underside);
+      beam.position.set(x,.035,0);root.add(beam);
+    }
+    for(const z of [-1.03,-.35,.35,1.03]){
+      const plank=new THREE.Mesh(box(2.9,.095,.27),pallet);
+      plank.position.set(0,.105,z);plank.receiveShadow=true;root.add(plank);
+    }
+  }else if(container.id==='stonepile'){
+    const circle=new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.44,.065,16),material('#928875'));
+    circle.position.y=.04;circle.receiveShadow=true;root.add(circle);
+    for(let i=0;i<10;i++){
+      const theta=i*Math.PI*2/10;
+      const chip=new THREE.Mesh(new THREE.DodecahedronGeometry(.10,0),material('#929a91'));
+      chip.position.set(Math.cos(theta)*1.2,.10,Math.sin(theta)*1.16);root.add(chip);
+    }
+  }
+  return root;
+}
+function seedTrayMesh(container,height){
+  const root=new THREE.Group();
+  root.position.set(container.x,ground(height,container.x,container.z)+.02,container.z);
+  const mat=material('#9e805b');
+  const base=new THREE.Mesh(box(1.3,.09,1),mat);base.position.y=.045;root.add(base);
+  for(const x of [-.61,.61]){
+    const side=new THREE.Mesh(box(.08,.19,1.05),mat);
+    side.position.set(x,.14,0);root.add(side);
+  }
+  for(const z of [-.48,.48]){
+    const side=new THREE.Mesh(box(1.30,.18,.08),mat);
+    side.position.set(0,.14,z);root.add(side);
+  }
+  return root;
+}
+
 export class MaterialRenderer {
   constructor(scene,height){
     this.scene=scene;this.height=height;this.itemMeshes=new Map();this.containers=new Map();
@@ -93,6 +132,8 @@ export class MaterialRenderer {
       if(container.kind==='crate')mesh=crateMesh(container,this.height);
       else if(container.kind==='basket')mesh=basketMesh(container,this.height);
       else if(container.kind==='shelves')mesh=shedMesh(container,this.height);
+      else if(container.kind==='pile')mesh=pileBaseMesh(container,this.height);
+      else if(container.kind==='tray')mesh=seedTrayMesh(container,this.height);
       if(mesh){this.group.add(mesh);this.containers.set(id,mesh);}
     }
     const existing=new Set(economy.items.map(i=>i.id));
@@ -103,17 +144,28 @@ export class MaterialRenderer {
     const offsets=new Map();
     // Exact accounting: 1 object in data -> 1 visible piece (LOD may vary later).
     for(const item of economy.items){
-      const key=item.container+':'+item.type;
+      const container=economy.containers.get(item.container);
+      const key=item.container+':'+stockSlotGroup(item,container);
       const ordinal=offsets.get(key)||0;
       offsets.set(key,ordinal+1);
       let mesh=this.itemMeshes.get(item.id);
-      if(!mesh){mesh=pieceFor(item);this.itemMeshes.set(item.id,mesh);this.group.add(mesh);}
+      if(!mesh){
+        mesh=pieceFor(item);
+        mesh.userData.nativeScale=mesh.scale.clone();
+        this.itemMeshes.set(item.id,mesh);this.group.add(mesh);
+      }
       const pos=economy.itemLayout(item,ordinal);
-      const container=economy.containers.get(item.container);
-      const y=ground(this.height,pos.x,pos.z)+
-        (container?.kind==='carry'?1.15:container?.kind==='site'?.18:container?.kind==='basket'?.30:container?.kind==='crate'?.28:.15)+
-        (item.type==='grain'?.23:0);
-      mesh.position.set(pos.x,y,pos.z);
+      mesh.position.set(pos.x,ground(this.height,pos.x,pos.z)+pos.height);
+      // Wood cylinders have their local axis along Y. Turn that axis into the
+      // actual crossed-log orientation; don't rotate every log toward the camera.
+      if(item.type==='wood'||item.type==='twig'){
+        const angle=pos.yaw||0;
+        const direction=new THREE.Vector3(Math.cos(angle),pos.tilt||0,Math.sin(angle)).normalize();
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),direction);
+      }else{
+        mesh.rotation.set(pos.tilt||0,pos.yaw||0,pos.roll||0);
+      }
+      mesh.scale.copy(mesh.userData.nativeScale).multiplyScalar(pos.size||1);
       if(item.type==='wood'){
         const tone=new THREE.Color('#8e6245').lerp(new THREE.Color('#514b49'),item.wet*.63);
         // Per-piece color, never alter shared material for other pieces.
