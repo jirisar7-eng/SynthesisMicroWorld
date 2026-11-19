@@ -807,7 +807,9 @@ class Diorama {
   mesh(geometry,material,x,y,z,cast=true){const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;return m;}
   resetCamera(){this.camera?.position.set(29,37,48);if(this.controls){this.controls.target.set(0,1.4,0);this.controls.update();}}
   addCamp(){
-    const y=terrainHeight(0,0);const base=this.mesh(new THREE.CylinderGeometry(3.6,3.7,.14,24),this.mat('#aa906c'),0,y+.1,0,false);this.scene.add(base);
+    // No raised, perfectly circular beige platform: terrain decals now form
+    // irregular trampled soil directly on the real ground surface.
+    const y=terrainHeight(0,0);
     const stonesMat=this.mat('#8e8876');
     for(let i=0;i<11;i++){const a=i*Math.PI*2/11;const rock=this.mesh(new THREE.DodecahedronGeometry(.38,0),stonesMat,Math.cos(a)*1.2,y+.25,Math.sin(a)*1.2);rock.scale.set(1,.6,.8);this.scene.add(rock);}
     const fire=this.mesh(new THREE.ConeGeometry(.33,.8,5),new THREE.MeshStandardMaterial({color:'#f6b755',emissive:'#f48c36',emissiveIntensity:2}),0,y+.58,0,false);this.scene.add(fire);this.fire=fire;
