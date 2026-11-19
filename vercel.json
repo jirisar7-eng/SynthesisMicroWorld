@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/svet",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/svet/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/prehled",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/prehled/",
+      "destination": "/index.html"
+    }
+  ]
+}
