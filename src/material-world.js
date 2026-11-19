@@ -323,7 +323,7 @@ export class MaterialWorld {
   createProject(recipe,{x,z,type,builderId,time=0}){
     if(!this.canAfford(recipe))return null;
     const projectId='project-'+this.nextProjectId++;
-    const site={id:'site-'+projectId,kind:'site',name:'Staveniště',x,z,roof:false};
+    const site={id:'site-'+projectId,kind:'site',name:'Staveniště',x,z,roof:false,buildingWidth:recipe.size?.[0]||4};
     this.containers.set(site.id,site);
     const items=[];
     for(const [kind,amount] of [['wood',recipe.wood],['stone',recipe.stone]]){
