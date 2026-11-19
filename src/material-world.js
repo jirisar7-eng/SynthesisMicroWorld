@@ -10,7 +10,7 @@ export const ITEM_INFO = Object.freeze({
   stone: {name:'Kámen', icon:'🪨'},
   berry: {name:'Bobule', icon:'🫐'},
   apple: {name:'Jablko', icon:'🍎'},
-  seed: {name:'Semínko', icon:'🌱'},
+  seed: {name:'Semínko divokých bobulí', icon:'🌱'},
   grain: {name:'Obilí', icon:'🌾'}
 });
 export const FOOD_TYPES = ['berry','apple','grain'];
@@ -105,7 +105,7 @@ export class MaterialWorld {
     const building={id,type,x,z,builderId,builtAt:time,roof:true};
     this.structures.push(building);
     if(type==='warehouse'){
-      const container={id:'covered-'+id,kind:'shelves',name:'Kryté skladiště',x,z,roof:true};
+      const container={id:'covered-'+id,kind:'shelves',name:'Krytý skladový přístřešek',x:x+3.9,z:z+.6,roof:true};
       this.containers.set(container.id,container);
       for(const item of this.items) {
         if(item.type==='wood'||item.type==='apple'||item.type==='berry'||item.type==='seed'||item.type==='grain'){
@@ -113,7 +113,7 @@ export class MaterialWorld {
         }
       }
     }
-    if(type==='farm')this.fields.push({id:'field-'+id,x:x+3.5,z:z+.2,planted:false,growth:0,water:.7,seededAt:null,crops:0,harvests:0});
+    if(type==='farm')this.fields.push({id:'field-'+id,x:x+3.5,z:z+.2,crop:'berry',planted:false,growth:0,water:.7,seededAt:null,crops:0,harvests:0});
     return building;
   }
   covered(item){return Boolean(this.containers.get(item.container)?.roof);}
@@ -158,8 +158,9 @@ export class MaterialWorld {
     const field=this.fields.find(f=>f.id===fieldId);
     if(!field||!field.planted||field.growth<1)return null;
     field.planted=false;field.growth=0;field.harvests++;field.crops+=6;
-    this.add('grain',6);this.add('seed',2);
-    return {grain:6,seeds:2};
+    // Wild berry seeds grow berry bushes, not implausibly a different cereal crop.
+    this.add('berry',6);this.add('seed',2);
+    return {berries:6,seeds:2};
   }
   chooseBuilding(){
     const current = new Set(this.structures.map(x=>x.type));
