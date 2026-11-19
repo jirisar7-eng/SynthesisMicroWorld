@@ -23,6 +23,7 @@ jobs:
           set -euo pipefail
           bash -n deploy/vps/https-preflight.sh
           bash -n deploy/vps/https-apply.sh
+          bash -n deploy/vps/update-world.sh
           grep -F '127.0.0.1:' deploy/vps/compose.yaml
           ! grep -E '0\.0\.0\.0:443|0\.0\.0\.0:80' deploy/vps/compose.https.yaml
       - name: Validate existing Caddy edge network overlay
