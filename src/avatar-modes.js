@@ -47,7 +47,8 @@ export function encounterEffect(person,avatar,seconds){
     if(person.social)person.social.frustration=Math.max(0,person.social.frustration-12);
     return {kind:'god',text:'Spatřil boha, má radost a získal naději.'};
   }
-  const empathy=(person.personality?.empathy??person.personality?.agreeableness??50);
+  // Existing NPC life model exposes sociability, not an invented empathy score.
+  const empathy=(person.personality?.sociability??person.personality?.empathy??50);
   person.mood=Math.min(100,person.mood+2);
   return {kind:'poor',text:empathy>=55?
     'Zpozoroval chudého poutníka a přemýšlí, jak mu pomoci.':
