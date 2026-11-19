@@ -114,6 +114,16 @@ test('MW-INTEGRATION-003: an unhappy adult autonomously packs, walks, pitches a 
       returned=true;break;
     }
   }
+  if(!returned){
+    console.error('MW007_RETURN_DEBUG',JSON.stringify({
+      now:sim.seconds,expectedReturn:a.social.expectedReturn,
+      status:a.social.status,mode:a.mode,purpose:a.purpose,
+      position:{x:a.x,z:a.z},target:a.target,
+      routeNodes:a.waypoints?.length,reason:a.reason,carried:sim.material.cargo(a).length,
+      tents:sim.material.tents.map(t=>({x:t.x,z:t.z})),
+      pathHome:planWalk(a,{x:0,z:0},solidFootprints(sim))?.length??null
+    }));
+  }
   assert.ok(returned,'The citizen must be able to return after some days');
   assert.ok(sim.material.items.every(item=>sim.material.containers.has(item.container)));
 });
