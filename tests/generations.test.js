@@ -61,7 +61,7 @@ test('MW009B-003: successful pregnancy creates child with stable id, parent link
  assert.equal(livingSummary(w.agents).living,3);
  assert.equal(livingSummary(w.agents).children,1);
 });
-test('MW009B-004: a real food item is consumed by family care, never cloned',()=>{
+test('MW009B-004: a daily tick never magically feeds a child from a distant crate',()=>{
  const w=world();populationDay(w,7);
  let due=null;
  for(let d=60;d<420;d+=30){due??=populationDay(w,d).find(e=>e.kind==='pregnancy')?.dueDay;if(due)break;}
@@ -69,10 +69,9 @@ test('MW009B-004: a real food item is consumed by family care, never cloned',()=
  const before=w.material.countAll();
  const baby=w.agents[kid.id];baby.hunger=88;
  const events=populationDay(w,due+1);
- const care=events.find(e=>e.kind==='care'&&e.id===baby.id);
- assert.ok(care);
- assert.equal(w.material.countAll(),before-1);
- assert.ok(!w.material.items.some(i=>i.id===care.resourceId));
+ assert.ok(!events.some(e=>e.kind==='care'));
+ assert.equal(w.material.countAll(),before);
+ assert.equal(baby.hunger,88);
 });
 test('MW009B-005: death preserves immutable ID and genealogical history, unlinks partner',()=>{
  const w=world();populationDay(w,7);
