@@ -165,7 +165,7 @@ class Diorama {
     const stone=this.mat('#777c7b'),moss=this.mat('#678c69');
     for(const p of this.sim.stones){
       const g=new THREE.Group();g.position.set(p.x,terrainHeight(p.x,p.z),p.z);
-      for(let i=0;i<4;i++){
+      for(let i=0;i<(this.mobileGraphics?2:4);i++){
         const x=Math.sin(p.id*1.2+i)*.55,z=Math.cos(p.id*1.6+i)*.51;
         const rock=this.mesh(new THREE.DodecahedronGeometry(.52+i*.07,0),
           i%3===0?moss:stone,x,.27,z);
@@ -178,11 +178,13 @@ class Diorama {
     for(const p of this.sim.apples){
       const g=new THREE.Group();g.position.set(p.x,terrainHeight(p.x,p.z),p.z);
       const trunk=this.mesh(new THREE.CylinderGeometry(.22,.32,2.1,7),bark,0,1.08,0);g.add(trunk);
-      for(const [x,y,z] of [[-.58,2.37,0],[.65,2.55,.18],[0,3.05,-.3]]){
+      for(const [x,y,z] of (this.mobileGraphics?
+        [[-.35,2.56,0],[.46,2.75,.15]]:
+        [[-.58,2.37,0],[.65,2.55,.18],[0,3.05,-.3]])){
         const crown=this.mesh(new THREE.IcosahedronGeometry(1.05,1),leaves,x,y,z);
         crown.scale.y=.82;g.add(crown);
       }
-      for(let i=0;i<7;i++){
+      for(let i=0;i<(this.mobileGraphics?2:7);i++){
         const angle=i*2.399;
         g.add(this.mesh(new THREE.SphereGeometry(.12,8,6),fruit,
           Math.cos(angle)*.8,2.0+(i%3)*.39,Math.sin(angle)*.72));
@@ -276,14 +278,18 @@ class Diorama {
       if(broadleaf){
         group.add(this.mesh(new THREE.CylinderGeometry(.22,.35,2.75,7),darkBark,0,1.35,0));
         const leaf=leafPal[p.id%leafPal.length];
-        for(const [x,y,z,r] of [[0,3.5,0,1.65],[-.8,3.0,.3,1.18],[.87,3.12,-.13,1.12],[.2,4.27,.12,1.03]]){
+        for(const [x,y,z,r] of (this.mobileGraphics?
+          [[0,3.5,0,1.65],[-.8,3.0,.3,1.18]]:
+          [[0,3.5,0,1.65],[-.8,3.0,.3,1.18],[.87,3.12,-.13,1.12],[.2,4.27,.12,1.03]])){
           const ball=this.mesh(new THREE.IcosahedronGeometry(r,1),leaf,x,y,z);
           ball.scale.set(1,.8,1);group.add(ball);
         }
       }else{
         group.add(this.mesh(new THREE.CylinderGeometry(.17,.3,2.15,7),trunk,0,1.08,0));
         const leaf=pinePal[p.id%pinePal.length];
-        for(const [y,r,h] of [[2.85,1.24,2.55],[3.93,1.03,2.45],[4.93,.75,1.85]]){
+        for(const [y,r,h] of (this.mobileGraphics?
+          [[2.85,1.24,2.55],[4.20,.96,2.35]]:
+          [[2.85,1.24,2.55],[3.93,1.03,2.45],[4.93,.75,1.85]])){
           group.add(this.mesh(new THREE.ConeGeometry(r,h,7),leaf,0,y,0));
         }
       }
@@ -303,8 +309,17 @@ class Diorama {
     const mat=this.mat('#4f8a59'),fruit=this.mat('#c57e58'),stem=this.mat('#597b42');
     for(const p of this.sim.berries){
       const y=terrainHeight(p.x,p.z);const g=new THREE.Group();g.position.set(p.x,y,p.z);
-      for(let i=0;i<3;i++){const ang=i*2.094;g.add(this.mesh(new THREE.SphereGeometry(.6,7,5),mat,Math.cos(ang)*.42,.64,Math.sin(ang)*.42));}
-      for(let i=0;i<4;i++){const ang=i*1.57;g.add(this.mesh(new THREE.SphereGeometry(.13,6,5),fruit,Math.cos(ang)*.62,1.03,Math.sin(ang)*.58));}
+      for(let i=0;i<(this.mobileGraphics?1:3);i++){
+        const ang=i*2.094;
+        g.add(this.mesh(new THREE.SphereGeometry(this.mobileGraphics?.78:.6,7,5),mat,
+          this.mobileGraphics?0:Math.cos(ang)*.42,.64,
+          this.mobileGraphics?0:Math.sin(ang)*.42));
+      }
+      for(let i=0;i<(this.mobileGraphics?2:4);i++){
+        const ang=i*1.57;
+        g.add(this.mesh(new THREE.SphereGeometry(.13,6,5),fruit,
+          Math.cos(ang)*.62,1.03,Math.sin(ang)*.58));
+      }
       g.add(this.mesh(new THREE.CylinderGeometry(.07,.11,.75,5),stem,0,.37,0));
       this.scene.add(g);this.berryModels.push({id:p.id,model:g});
     }
