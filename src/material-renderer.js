@@ -130,7 +130,32 @@ const buildingMaterials={
 };
 export class BuildingRenderer {
   constructor(scene,height){
-    this.scene=scene;this.height=height;this.done=new Map();this.preview=null;this.previewKey=null;this.fields=new Map();
+    this.scene=scene;this.height=height;this.done=new Map();this.preview=null;this.previewKey=null;this.fields=new Map();this.tentModels=new Map();
+  }
+  makeTent(tent){
+    const group=new THREE.Group();
+    group.position.set(tent.x,this.height(tent.x,tent.z)+.02,tent.z);
+    const cloth=material('#9a8e69');
+    const frame=material('#65523e');
+    const platform=new THREE.Mesh(box(3.4,.10,2.8),material('#a49b7e'));
+    platform.position.y=.07;group.add(platform);
+    const tentRoof=new THREE.Mesh(new THREE.CylinderGeometry(0,2.3,2.5,4,1,false),cloth);
+    tentRoof.rotation.y=Math.PI/4;
+    tentRoof.scale.set(1.25,1,1);
+    tentRoof.position.y=1.35;
+    tentRoof.castShadow=true;
+    group.add(tentRoof);
+    for(const x of [-1.45,1.45]){
+      const pole=new THREE.Mesh(new THREE.CylinderGeometry(.06,.08,2,6),frame);
+      pole.position.set(x,1.05,0);group.add(pole);
+    }
+    const entrance=new THREE.Mesh(box(.8,1.25,.04),material('#4a4036'));
+    entrance.position.set(0,.67,1.06);group.add(entrance);
+    const firepit=new THREE.Mesh(new THREE.CylinderGeometry(.38,.4,.09,10),
+      material('#6d6155'));
+    firepit.position.set(2,.12,1.9);group.add(firepit);
+    this.scene.add(group);
+    return group;
   }
   makeBuilding(type,x,z,progress=1){
     const spec=RECIPES[type]||RECIPES.house,mat=buildingMaterials[type]||buildingMaterials.house;
@@ -171,6 +196,11 @@ export class BuildingRenderer {
     v.roof.visible=p>.62;v.entrance.visible=p>.75;
   }
   sync(economy,construction){
+    for(const tent of economy.tents){
+      if(!this.tentModels.has(tent.id)){
+        this.tentModels.set(tent.id,this.makeTent(tent));
+      }
+    }
     for(const b of economy.structures){
       if(this.done.has(b.id))continue;
       const instance=this.makeBuilding(b.type,b.x,b.z,1);
