@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {RECIPES,ITEM_INFO} from './material-world.js';
 import {stockSlotGroup} from './stockpile-layout.js';
+import {handPose,cargoClass} from './carry-poses.js';
 
 const material=(hex,roughness=.92)=>new THREE.MeshStandardMaterial({color:hex,roughness});
 const resources={
@@ -124,6 +125,10 @@ export class MaterialRenderer {
     this.scene=scene;this.height=height;this.itemMeshes=new Map();this.containers=new Map();
     this.group=new THREE.Group();scene.add(this.group);
     this.previousSignature='';this.basketCount=0;
+    this.carriers=new Map();
+  }
+  bindCarriers(people){
+    this.carriers=new Map(people.map((group,id)=>[id,group]));
   }
   sync(economy){
     for(const [id,container] of economy.containers){
@@ -138,7 +143,7 @@ export class MaterialRenderer {
     }
     const existing=new Set(economy.items.map(i=>i.id));
     for(const [id,mesh] of this.itemMeshes)if(!existing.has(id)){
-      this.group.remove(mesh);this.itemMeshes.delete(id);
+      mesh.parent?.remove(mesh);this.itemMeshes.delete(id);
     }
     // One indexed layout pass: avoids O(n²) scans on mobile as stocks grow.
     const offsets=new Map();
@@ -154,16 +159,32 @@ export class MaterialRenderer {
         mesh.userData.nativeScale=mesh.scale.clone();
         this.itemMeshes.set(item.id,mesh);this.group.add(mesh);
       }
-      const pos=economy.itemLayout(item,ordinal);
-      mesh.position.set(pos.x,ground(this.height,pos.x,pos.z)+pos.height);
-      // Wood cylinders have their local axis along Y. Turn that axis into the
-      // actual crossed-log orientation; don't rotate every log toward the camera.
+      const person=container?.kind==='carry'?this.carriers.get(container.ownerId):null;
+      const attachment=person?.userData?.cargoAnchor;
+      const carried=!!attachment;
+      const pos=carried?handPose(item,ordinal):economy.itemLayout(item,ordinal);
+      if(carried){
+        // CRITICAL: the mesh is literally a child of the moving character.
+        // Character translation/rotation happens every render frame, even
+        // when inventory sync is throttled to 350 ms.
+        if(mesh.parent!==attachment)attachment.add(mesh);
+        mesh.position.set(pos.x,pos.y,pos.z);
+      }else if(container?.kind==='carry'){
+        // A missing model cannot place owner-owned cargo at world origin.
+        mesh.visible=false;continue;
+      }else{
+        if(mesh.parent!==this.group)this.group.add(mesh);
+        mesh.position.set(pos.x,ground(this.height,pos.x,pos.z)+pos.height);
+      }
+      mesh.visible=true;
+      // Each real item retains its identity and native geometry. Logs and
+      // twigs are physically horizontal relative to their carrier.
       if(item.type==='wood'||item.type==='twig'){
         const angle=pos.yaw||0;
         const direction=new THREE.Vector3(Math.cos(angle),pos.tilt||0,Math.sin(angle)).normalize();
         mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),direction);
       }else{
-        mesh.rotation.set(pos.tilt||0,pos.yaw||0,pos.roll||0);
+        mesh.rotation.set(pos.pitch||pos.tilt||0,pos.yaw||0,pos.roll||0);
       }
       mesh.scale.copy(mesh.userData.nativeScale).multiplyScalar(pos.size||1);
       if(item.type==='wood'){
@@ -174,6 +195,12 @@ export class MaterialRenderer {
         }
         mesh.material.color.copy(tone);
       }
+    }
+    for(const [id,group] of this.carriers){
+      const carried=economy.items.filter(item=>item.container==='carry-'+id);
+      if(group.userData.cargoSupport)group.userData.cargoSupport.visible=
+        cargoClass(carried)==='hands';
+      group.userData.carryClass=cargoClass(carried);
     }
   }
 }

@@ -9,6 +9,8 @@ import {FootpathRenderer} from './footpath-renderer.js';
 import {decideCommunityProject} from './settlement-planner.js';
 import {SocialDynamics} from './social-dynamics.js';
 import {createGroundTexture} from './ground-details.js';
+import {createForestPatches,createTrampledCamp,createGroundClutter} from './terrain-details.js';
+import {loadSpeed} from './carry-poses.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
   learnOutcome, exchangeKnowledge, decision, knowledgeSummary, episode
@@ -24,7 +26,13 @@ const colors = [0xb17b59,0x9baf74,0x637f9b,0xca9d75,0x8e798d,0x81ad9f];
 const terrainHeight = (x,z) => {
   const r=Math.hypot(x,z);
   const shore=clamp(1-Math.pow(r/46,4),0,1);
-  return -1.65+3.6*shore+0.31*Math.sin(x*.35)*Math.cos(z*.31)+0.15*Math.sin(x*.9+z*.55);
+  // Related scales (large hills, erosional folds, local surface) make
+  // irregular slopes without breaking terrain-conforming foundations.
+  const large=.34*Math.sin(x*.18+Math.sin(z*.08))*Math.cos(z*.21);
+  const folding=.14*Math.sin(x*.48-z*.24)+.10*Math.cos(z*.63+x*.31);
+  const detail=.057*Math.sin(x*1.91+z*.76)*Math.cos(z*2.12-x*.31);
+  const villageSoftness=clamp(r/9,.13,1);
+  return -1.65+3.6*shore+(large+folding+detail)*villageSoftness;
 };
 function seeded(seed){let n=seed>>>0;return()=>{n=(n*1664525+1013904223)>>>0;return n/4294967296;};}
 const rng=seeded(217);
@@ -110,7 +118,18 @@ class Civilization {
     a.workRemaining=duration*(skilled?1.12-a.personality.persistence/500:1);
     a.workTotal=a.workRemaining;a.reason=reason;
   }
-  idle(a){a.mode='idle';a.purpose='';a.target=null;a.resource=null;a.choiceAt=this.seconds+rand(0.25,1.25);}
+  idle(a){
+    // If the actor abandons a haul, actual goods land at their feet.
+    // Never leave them in an invisible ghost inventory.
+    const fallen=this.material.dropCargo(a,'Přerušená činnost');
+    if(fallen){
+      this.addEvent('Odložený náklad',
+        a.name+' položil '+fallen.quantity+' předmětů na zem. Materiál nezmizel.','⌑');
+      a.carry=0;a.carryType=null;
+    }
+    a.mode='idle';a.purpose='';a.target=null;a.resource=null;
+    a.choiceAt=this.seconds+rand(.25,1.25);
+  }
   startConstructionTrip(a){
     const project=this.construction;
     if(!project)return;
@@ -222,6 +241,15 @@ class Civilization {
       if(move){
         this.go(a,'pickupStore',move.source,
           'Chce přenést '+move.ids.length+' věcí z nekrytého skladu pod střechu.',move);
+        return;
+      }
+    }
+    // Abandoned items can be rescued and individually carried home.
+    if(a.social?.status==='resident'&&!this.construction&&Math.random()<.27){
+      const lost=this.material.recoverable();
+      if(lost){
+        this.go(a,'pickupDropped',lost.source,
+          'Našel odložený materiál a chce ho vrátit do skutečných zásob.',lost);
         return;
       }
     }
@@ -344,6 +372,23 @@ class Civilization {
     if(a.purpose==='campWander'){
       this.work(a,'campLiving',6,
         'Tráví čas o samotě, odpočívá a přemýšlí o návratu.');return;
+    }
+    if(a.purpose==='pickupDropped'){
+      const order=a.resource;
+      if(order&&this.material.pickupStorage(a,order.ids)){
+        a.carry=this.material.cargo(a).length;
+        this.go(a,'deliverDropped',{x:0,z:0},
+          'Vrací nalezené předměty do hromad a bedýnek.');
+        return;
+      }
+      this.idle(a);return;
+    }
+    if(a.purpose==='deliverDropped'){
+      const n=this.material.deliver(a);
+      a.carry=0;a.carryType=null;this.syncStock();
+      this.addEvent('Nalezené zásoby vráceny',
+        a.name+' donesl zpět '+n+' skutečných předmětů.','⌑');
+      this.idle(a);return;
     }
     if(a.purpose==='pickupBuild'){
       const order=a.resource;
@@ -645,7 +690,9 @@ class Civilization {
       });
       if(a.mode==='idle'){this.decide(a);continue;}
       if(a.mode==='walk' && a.target){
-        const d=dist(a,a.target),step=a.speed*dt;
+        const d=dist(a,a.target);
+        const speedFactor=loadSpeed(this.material.cargo(a));
+        const step=a.speed*dt*speedFactor;
         const before={x:a.x,z:a.z};
         if(d<=step+.3){a.x=a.target.x;a.z=a.target.z;}
         else{a.x+=(a.target.x-a.x)/d*step;a.z+=(a.target.z-a.z)/d*step;}
@@ -679,23 +726,33 @@ class Diorama {
     this.ambient=new THREE.HemisphereLight('#edffff','#768b68',2.4);this.scene.add(this.ambient);
     this.clearSky=new THREE.Color('#c8dfdd');this.nightSky=new THREE.Color('#627c84');this.rainSky=new THREE.Color('#869a9b');
     const sun=new THREE.DirectionalLight('#ffeed6',3.5);sun.position.set(-20,43,24);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-49;sun.shadow.camera.right=49;sun.shadow.camera.top=49;sun.shadow.camera.bottom=-49;sun.shadow.camera.near=1;sun.shadow.camera.far=110;sun.shadow.bias=-.00022;this.scene.add(sun);this.sun=sun;
-    const groundGeo=new THREE.PlaneGeometry(100,100,100,100);groundGeo.rotateX(-Math.PI/2);
+    const groundGeo=new THREE.PlaneGeometry(100,100,148,148);groundGeo.rotateX(-Math.PI/2);
     const pos=groundGeo.attributes.position,vertices=[];
-    const light=new THREE.Color('#98bb73'),dark=new THREE.Color('#628c55'),sandy=new THREE.Color('#d8cf94');
+    const light=new THREE.Color('#a4c68b'),dark=new THREE.Color('#587953'),sandy=new THREE.Color('#c9b68d'),earth=new THREE.Color('#8b795e');
     for(let i=0;i<pos.count;i++){const x=pos.getX(i),z=pos.getZ(i);const h=terrainHeight(x,z);pos.setY(i,h);
       let color=light.clone().lerp(dark,clamp((.5+Math.sin(x*1.1+z*.35)*.25+Math.cos(z*.94-x*.3)*.22),0,1)*.55);
-      if(h<-.25)color.lerp(sandy,clamp((-.25-h)*1.3,0,.95));vertices.push(color.r,color.g,color.b);
+      if(h<-.25)color.lerp(sandy,clamp((-.25-h)*1.3,0,.95));
+      const centerDist=Math.hypot(x,z);
+      const worn=clamp((8.8-centerDist)/6.8,0,1)*.35;
+      color.lerp(earth,worn);
+      const woodland=clamp((centerDist-12)/15,0,1)*(.09+.06*Math.sin(x*.43+z*.61));
+      color.lerp(dark,woodland);
+      vertices.push(color.r,color.g,color.b);
     }groundGeo.setAttribute('color',new THREE.Float32BufferAttribute(vertices,3));groundGeo.computeVertexNormals();
     const land=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({map:createGroundTexture(THREE),vertexColors:true,roughness:1,side:THREE.DoubleSide}));land.receiveShadow=true;this.scene.add(land);
     const water=new THREE.Mesh(new THREE.PlaneGeometry(190,190),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
     this.addCamp();this.treeModels=[];this.addForest();this.addBerries();
+    createForestPatches(this.scene,terrainHeight,this.sim.trees);
+    createTrampledCamp(this.scene,terrainHeight);
+    createGroundClutter(this.scene,terrainHeight,this.sim.trees);
     this.addRocksAndGrass();this.addDeposits();this.addRain();
     this.pathVisuals=new FootpathRenderer(this.scene,terrainHeight);
     this.inventoryVisuals=new MaterialRenderer(this.scene,terrainHeight);
     this.buildingVisuals=new BuildingRenderer(this.scene,terrainHeight);
-    this.inventoryVisuals.sync(sim.material);
     this.people=[];this.pickables=[];
     for(const agent of sim.agents){const group=this.makePerson(agent);this.scene.add(group);this.people.push(group);}
+    this.inventoryVisuals.bindCarriers(this.people);
+    this.inventoryVisuals.sync(sim.material);
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
     const canvas=this.renderer.domElement;let start={x:0,y:0};
@@ -750,7 +807,9 @@ class Diorama {
   mesh(geometry,material,x,y,z,cast=true){const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;return m;}
   resetCamera(){this.camera?.position.set(29,37,48);if(this.controls){this.controls.target.set(0,1.4,0);this.controls.update();}}
   addCamp(){
-    const y=terrainHeight(0,0);const base=this.mesh(new THREE.CylinderGeometry(3.6,3.7,.14,24),this.mat('#aa906c'),0,y+.1,0,false);this.scene.add(base);
+    // No raised, perfectly circular beige platform: terrain decals now form
+    // irregular trampled soil directly on the real ground surface.
+    const y=terrainHeight(0,0);
     const stonesMat=this.mat('#8e8876');
     for(let i=0;i<11;i++){const a=i*Math.PI*2/11;const rock=this.mesh(new THREE.DodecahedronGeometry(.38,0),stonesMat,Math.cos(a)*1.2,y+.25,Math.sin(a)*1.2);rock.scale.set(1,.6,.8);this.scene.add(rock);}
     const fire=this.mesh(new THREE.ConeGeometry(.33,.8,5),new THREE.MeshStandardMaterial({color:'#f6b755',emissive:'#f48c36',emissiveIntensity:2}),0,y+.58,0,false);this.scene.add(fire);this.fire=fire;
@@ -909,13 +968,20 @@ class Diorama {
       const arm=this.mesh(new THREE.CylinderGeometry(.11,.11,.57,7),shirt,sign*.44,1.03,0);
       g.add(leg,arm);g.userData.legs.push(leg);g.userData.arms.push(arm);
     }
-    const carried=new THREE.Group();carried.position.set(.52,1.02,.15);
-    const carryColors={wood:'#936544',stone:'#929d9b',apple:'#cb654e',berry:'#5b6b9c'};
-    for(let i=0;i<5;i++){
-      const mesh=this.mesh(new THREE.DodecahedronGeometry(.13,0),this.mat('#95694d'),(i%2)*.2,Math.floor(i/2)*.19,0);
-      mesh.visible=false;carried.add(mesh);
-    }
-    g.add(carried);g.userData.carried=carried;g.userData.carryColors=carryColors;
+    // A real rig attachment inherits character motion and orientation.
+    // Every carried item will become a child of this anchor (not a floating
+    // world-space mesh adjusted every ~350ms).
+    const cargoAnchor=new THREE.Group();
+    cargoAnchor.position.set(0,1.03,.46);g.add(cargoAnchor);
+    g.userData.cargoAnchor=cargoAnchor;
+    // A folded shirt-fabric sling supports berries and apples in the hands;
+    // this is not a free craftable basket or an invisible inventory container.
+    const support=this.mesh(new THREE.SphereGeometry(.31,10,7),
+      this.mat('#ae9979'),0,-.22,.14,false);
+    support.scale.set(1,.20,.65);
+    cargoAnchor.add(support);
+    support.visible=false;g.userData.cargoSupport=support;
+    g.userData.carryClass='empty';
     const halo=this.mesh(new THREE.RingGeometry(.55,.67,28),new THREE.MeshBasicMaterial({color:'#e8ffd1',side:THREE.DoubleSide,transparent:true,opacity:.85}),0,.11,0,false);
     halo.rotation.x=-Math.PI/2;halo.visible=false;g.add(halo);g.userData.halo=halo;
     const bubbleCanvas=document.createElement('canvas');bubbleCanvas.width=128;bubbleCanvas.height=64;
@@ -975,20 +1041,28 @@ class Diorama {
       if(a.mode==='walk' && a.target){const dx=a.target.x-a.x,dz=a.target.z-a.z;if(Math.hypot(dx,dz)>.2)g.rotation.y=Math.atan2(dx,dz);}
       const walking=a.mode==='walk',working=a.mode==='work';
       const stride=walking?Math.sin(this.timer*8+i*1.3)*.47:0;
+      const loadMode=g.userData.carryClass;
       for(let j=0;j<2;j++){
         g.userData.legs[j].rotation.x=(j===0?1:-1)*stride;
-        g.userData.arms[j].rotation.x=walking?(j===0?-1:1)*stride*.7:working?Math.sin(this.timer*5+i+j*1.8)*.24:0;
+        if(loadMode==='shoulder'){
+          g.userData.arms[j].rotation.x=j===0?-.60:-.34;
+          g.userData.arms[j].rotation.z=j===0?.34:-.27;
+        }else if(loadMode==='heavy'||loadMode==='hands'){
+          g.userData.arms[j].rotation.x=-.80;
+          g.userData.arms[j].rotation.z=j===0?.27:-.27;
+        }else{
+          g.userData.arms[j].rotation.x=walking?(j===0?-1:1)*stride*.7:
+            working?Math.sin(this.timer*5+i+j*1.8)*.24:0;
+          g.userData.arms[j].rotation.z=0;
+        }
       }
       g.userData.torso.rotation.z=walking?Math.sin(this.timer*8+i)*.035:a.purpose==='resting'?.10:0;
       g.userData.head.rotation.y=a.purpose==='talking'?Math.sin(this.timer*2+i)*.25:Math.sin(this.timer*.8+i)*.07;
       g.userData.hair.rotation.y=g.userData.head.rotation.y;
       g.userData.bubble.visible=a.purpose==='talking';
       g.userData.halo.visible=i===selectedAgent;
-      for(let k=0;k<g.userData.carried.children.length;k++){
-        const item=g.userData.carried.children[k];
-        item.visible=false; // Individually tracked cargo has visible meshes in MaterialRenderer.
-        item.material.color.set(g.userData.carryColors[a.carryType]||'#b49b73');
-      }
+      const carrying=g.userData.carryClass!=='empty';
+      g.userData.cargoAnchor.rotation.x=carrying?Math.sin(this.timer*8+i)*.015:0;
     });
     for(const tree of this.treeModels){
       if(tree.resource.stock<=0&&tree.model.scale.y>.32)tree.model.scale.y=.32;
@@ -1185,6 +1259,7 @@ function renderLifePage(){
     build:'Staví budovu',building:'Stavba',
     pickupBuild:'Nabírá stavební materiál',deliverBuild:'Nese materiál na stavbu',
     pickupStore:'Přebírá zásoby',deliverStore:'Stěhuje zásoby do skladiště',
+    pickupDropped:'Zvedá odložené předměty',deliverDropped:'Nese nalezené zásoby',
     assistBuild:'Jde pomoci staviteli',assisting:'Pomáhá stavět',explore:'Průzkum',
     eat:'Jde jíst',eating:'Jí',talking:'Rozhovor',rest:'Odpočinek',
     resting:'Spí',meet:'Setkání',departWood:'Nese dřevo',departFood:'Bere jídlo',departCamp:'Odchází do samoty',campWander:'Žije v táboře',campLiving:'Odpočívá stranou',returnHome:'Vrací se domů',tentEat:'Jí ve stanu'};
@@ -1224,6 +1299,7 @@ function renderUI(){
   if(document.body.classList.contains('page-map')){
     if(el('map-trails'))el('map-trails').textContent=sim.paths.summary().trails;
     if(el('map-hauls'))el('map-hauls').textContent=sim.material.logistics.constructionDeliveries;
+    if(el('map-carrying'))el('map-carrying').textContent=sim.material.countCarried();
   }
   if(document.body.classList.contains('page-overview'))renderMaterialLedger();
   renderLifePage();

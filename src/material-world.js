@@ -302,6 +302,26 @@ export class MaterialWorld {
     this.logistics.delivered+=goods.length;
     return goods.length;
   }
+  /** An interrupted haul produces an actual loose-ground container, never a lost item. */
+  dropCargo(agent,reason='Interrupted transport'){
+    const goods=this.cargo(agent);
+    if(!goods.length)return null;
+    const id='drop-'+this.nextId++;
+    const patch={id,kind:'drop',name:'Odložené věci',x:agent.x,z:agent.z,roof:false,
+      ownerId:agent.id,reason};
+    this.containers.set(id,patch);
+    for(const item of goods)item.container=id;
+    this.logistics.dropped=(this.logistics.dropped||0)+goods.length;
+    return {container:patch,quantity:goods.length};
+  }
+  recoverable(){
+    for(const c of this.containers.values()){
+      if(c.kind!=='drop')continue;
+      const items=this.items.filter(i=>i.container===c.id&&!i.reservedFor);
+      if(items.length)return {source:c,ids:items.slice(0,4).map(i=>i.id)};
+    }
+    return null;
+  }
   nearestRoofedStore(){
     return [...this.containers.values()].find(c=>c.kind==='shelves'&&c.roof)||null;
   }
