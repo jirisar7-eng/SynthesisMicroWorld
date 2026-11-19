@@ -13,6 +13,8 @@ import {Footpaths} from '../src/footpaths.js';
 import {decideCommunityProject} from '../src/settlement-planner.js';
 import {SocialDynamics} from '../src/social-dynamics.js';
 import {loadSpeed} from '../src/carry-poses.js';
+import {initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS} from '../src/construction-stages.js';
+import {createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS} from '../src/avatar-modes.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,isBlocked} from '../src/spatial-world.js';
 import {
   initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
@@ -29,6 +31,8 @@ const context=vm.createContext({
   console,Math,MaterialWorld,RECIPES,FOOD_TYPES,ITEM_INFO,
   initializeBiography,lifeEvent,experienceSkill,makeLifeCard,
   Footpaths,decideCommunityProject,SocialDynamics,loadSpeed,
+  initializeBuildSite,beginPhase,clearNextObject,phaseProgress,validStage,CONSTRUCTION_LABELS,
+  createAvatar,selectPlayerMode,advanceAvatar,encounterEffect,PLAYER_LABELS,
   solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot,
   initCognition,observeNearby,chooseKnownResource,chooseExplorationTarget,
   learnOutcome,exchangeKnowledge,decision,knowledgeSummary,episode,
@@ -126,4 +130,27 @@ test('MW-INTEGRATION-003: an unhappy adult autonomously packs, walks, pitches a 
   }
   assert.ok(returned,'The citizen must be able to return after some days');
   assert.ok(sim.material.items.every(item=>sim.material.containers.has(item.container)));
+});
+
+test('MW008-INTEGRATION-004: a real autonomous completed house passes surveyed, graded, hauled, foundation, scaffold and finishing phases',()=>{
+  const sim=new Civilization();
+  sim.material.add('wood',32);
+  sim.material.add('stone',16);
+  sim.syncStock();
+  for(let i=0;i<2800&&sim.material.structures.length===0;i++)sim.update(.2);
+  const house=sim.material.structures.find(s=>s.type==='house');
+  assert.ok(house,'Builders should autonomously finish at least one structure with available materials');
+  assert.equal(house.groundPrepared,true);
+  assert.equal(house.scaffoldingDismantled,true);
+  const order=house.stages.map(step=>step.phase);
+  for(const phase of ['survey','grading','hauling','foundation','frame','finish','complete']){
+    assert.ok(order.includes(phase),'Missing real work phase '+phase);
+  }
+  for(let i=1;i<order.length;i++){
+    const phases=['survey','clear','grading','hauling','foundation','frame','finish','complete'];
+    assert.ok(phases.indexOf(order[i])>phases.indexOf(order[i-1]),'Construction stages must advance in order');
+  }
+  assert.ok(house.clearedCount>=0);
+  assert.ok(sim.material.logistics.constructionDeliveries>=RECIPES.house.wood,
+    'Each material was truly carried to the site');
 });

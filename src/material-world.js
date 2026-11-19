@@ -282,6 +282,21 @@ export class MaterialWorld {
     const bag=this.containers.get('carry-'+agent.id);
     if(bag){bag.x=agent.x;bag.z=agent.z;}
   }
+  /** The poor visitor receives the exact existing food object.
+   * Nothing is created or consumed; it is handed from citizen to player.
+   */
+  giveToVisitor(agent,visitor){
+    const piece=this.cargo(agent).find(item=>FOOD_TYPES.includes(item.type));
+    if(!piece)return null;
+    const id='carry-visitor';
+    if(!this.containers.has(id))this.containers.set(id,{
+      id,kind:'carry',ownerId:'visitor',name:'Dar poutníkovi',
+      x:visitor.x,z:visitor.z,roof:false
+    });
+    piece.container=id;
+    this.logistics.transported++;
+    return piece;
+  }
   collect(agent,type,quantity,details={}){
     if(!Number.isInteger(quantity)||quantity<0)throw new Error('Invalid collection amount');
     const cargo=this.cargoContainer(agent);

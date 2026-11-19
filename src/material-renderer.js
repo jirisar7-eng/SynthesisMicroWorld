@@ -313,6 +313,15 @@ export class BuildingRenderer {
     const contact=foundationContact(this.height,x,z,w+.55,d+.55);
     const group=new THREE.Group();group.position.set(x,contact.top,z);
     addFoundationSupports(group,contact,this.height,'#9f9a8c');
+    const foundationMeshes=group.children.slice();
+    const padHeight=Math.max(.18,contact.top-contact.low+.16);
+    const preparedSoil=new THREE.Mesh(box(w+.7,padHeight,d+.7),material('#8a7857'));
+    preparedSoil.position.y=.045-padHeight/2;preparedSoil.receiveShadow=true;group.add(preparedSoil);
+    const surveyStakes=new THREE.Group();group.add(surveyStakes);
+    for(const dx of [-w/2,w/2])for(const dz of [-d/2,d/2]){
+      const stake=new THREE.Mesh(box(.09,.65,.09),material('#bf9b69'));
+      stake.position.set(dx,.3,dz);surveyStakes.add(stake);
+    }
     const platform=new THREE.Mesh(box(w+.55,.22,d+.55),material('#a49374'));
     platform.position.y=.12;platform.receiveShadow=true;group.add(platform);
     const body=new THREE.Mesh(box(w,2.45,d),mat.wall);
@@ -337,15 +346,62 @@ export class BuildingRenderer {
       const trough=new THREE.Mesh(box(1.5,.45,.58),material('#92734f'));
       trough.position.set(-w*.38,.38,d*.8);group.add(trough);
     }
-    const parts={group,body,roof,entrance,progress};
-    this.applyProgress(parts,progress);
+    const finishDetails=group.children.slice(group.children.indexOf(entrance)+1);
+    const timber=new THREE.Group();group.add(timber);
+    const beamMaterial=material('#8c6749');
+    for(const dx of [-w/2+.18,w/2-.18])for(const dz of [-d/2+.18,d/2-.18]){
+      const post=new THREE.Mesh(box(.19,2.58,.19),beamMaterial);
+      post.position.set(dx,1.4,dz);post.castShadow=true;timber.add(post);
+    }
+    for(const level of [.52,2.62])for(const dz of [-d/2+.18,d/2-.18]){
+      const rail=new THREE.Mesh(box(w-.35,.14,.14),beamMaterial);
+      rail.position.set(0,level,dz);timber.add(rail);
+    }
+    for(const level of [.52,2.62])for(const dx of [-w/2+.18,w/2-.18]){
+      const rail=new THREE.Mesh(box(.14,.14,d-.35),beamMaterial);
+      rail.position.set(dx,level,0);timber.add(rail);
+    }
+    const scaffold=new THREE.Group();group.add(scaffold);
+    const steel=material('#8f998c'),planks=material('#ab8b5d');
+    for(const dx of [-w/2-.62,w/2+.62])for(const dz of [-d/2-.62,d/2+.62]){
+      const pole=new THREE.Mesh(box(.07,3.7,.07),steel);
+      pole.position.set(dx,1.86,dz);scaffold.add(pole);
+    }
+    for(const dz of [-d/2-.62,d/2+.62])for(const level of [1.25,2.5,3.35]){
+      const rail=new THREE.Mesh(box(w+1.3,.075,.09),steel);
+      rail.position.set(0,level,dz);scaffold.add(rail);
+    }
+    for(const dx of [-w/2-.62,w/2+.62])for(const level of [1.25,2.5,3.35]){
+      const rail=new THREE.Mesh(box(.09,.075,d+1.3),steel);
+      rail.position.set(dx,level,0);scaffold.add(rail);
+    }
+    for(const dz of [-d/2-.62,d/2+.62])for(const level of [1.3,2.52]){
+      const deck=new THREE.Mesh(box(w+1.15,.07,.45),planks);
+      deck.position.set(0,level,dz);deck.castShadow=true;scaffold.add(deck);
+    }
+    const parts={group,body,roof,entrance,platform,preparedSoil,surveyStakes,
+      foundationMeshes,finishDetails,timber,scaffold,progress};
+    this.applyProgress(parts,progress,'complete');
     this.scene.add(group);
     return parts;
   }
-  applyProgress(v,p){
-    v.body.scale.y=Math.max(.03,Math.min(1,p*1.65));
+  applyProgress(v,p,phase='complete'){
+    const phases={survey:0,clear:1,grading:2,hauling:3,
+      foundation:4,frame:5,finish:6,complete:7};
+    const stage=phases[phase]??7;
+    v.surveyStakes.visible=stage<4;
+    v.preparedSoil.visible=stage>=2;
+    for(const part of v.foundationMeshes)part.visible=stage>=4;
+    v.platform.visible=stage>=4;
+    v.timber.visible=stage===5;
+    v.timber.scale.y=stage===5?Math.max(.12,Math.min(1,(p-.70)/.19)):1;
+    v.scaffold.visible=stage===5||stage===6;
+    v.body.visible=stage>=6;
+    v.body.scale.y=stage===6?Math.max(.15,Math.min(1,(p-.89)/.075)):1;
     v.body.position.y=.18+v.body.scale.y*1.18;
-    v.roof.visible=p>.62;v.entrance.visible=p>.75;
+    v.roof.visible=stage===7||(stage===6&&p>.97);
+    v.entrance.visible=stage===7;
+    for(const decoration of v.finishDetails)decoration.visible=stage===7;
   }
   sync(economy,construction){
     for(const tent of economy.tents){
@@ -367,7 +423,7 @@ export class BuildingRenderer {
       this.preview=this.makeBuilding(construction.type,construction.x,construction.z,.04);
       this.previewKey=key;
     }
-    if(this.preview&&construction)this.applyProgress(this.preview,construction.progress);
+    if(this.preview&&construction)this.applyProgress(this.preview,construction.progress,construction.phase);
     for(const field of economy.fields){
       let patch=this.fields.get(field.id);
       if(!patch){
