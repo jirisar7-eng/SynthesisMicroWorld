@@ -29,4 +29,4 @@ services:
         max-file: "3"
 networks:
   microworld_private:
-    internal: true
+    driver: bridge
