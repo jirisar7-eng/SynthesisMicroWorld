@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
 import {MaterialWorld, RECIPES, FOOD_TYPES, ITEM_INFO} from './material-world.js';
 import {initializeBiography,lifeEvent,experienceSkill,makeLifeCard} from './biography.js';
+import {MaterialRenderer,BuildingRenderer} from './material-renderer.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
   learnOutcome, exchangeKnowledge, decision, knowledgeSummary, episode
@@ -424,7 +425,12 @@ class Diorama {
     }groundGeo.setAttribute('color',new THREE.Float32BufferAttribute(vertices,3));groundGeo.computeVertexNormals();
     const land=new THREE.Mesh(groundGeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide}));land.receiveShadow=true;this.scene.add(land);
     const water=new THREE.Mesh(new THREE.PlaneGeometry(190,190),new THREE.MeshPhysicalMaterial({color:'#7cb2ad',roughness:.25,metalness:.07,transparent:true,opacity:.76,clearcoat:.6,clearcoatRoughness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.58;this.scene.add(water);this.water=water;
-    this.addCamp();this.treeModels=[];this.addForest();this.addBerries();this.addRocksAndGrass();this.addRain();this.people=[];this.pickables=[];
+    this.addCamp();this.treeModels=[];this.addForest();this.addBerries();
+    this.addRocksAndGrass();this.addDeposits();this.addRain();
+    this.inventoryVisuals=new MaterialRenderer(this.scene,terrainHeight);
+    this.buildingVisuals=new BuildingRenderer(this.scene,terrainHeight);
+    this.inventoryVisuals.sync(sim.material);
+    this.people=[];this.pickables=[];
     for(const agent of sim.agents){const group=this.makePerson(agent);this.scene.add(group);this.people.push(group);}
     this.shelterVisual=null;this.constructionVisual=null;this.built=0;this.timer=0;
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();
@@ -432,6 +438,37 @@ class Diorama {
     canvas.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};});
     canvas.addEventListener('pointerup',e=>{if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>7)return;this.pointer.set((e.offsetX/canvas.clientWidth)*2-1,-(e.offsetY/canvas.clientHeight)*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);const hit=this.raycaster.intersectObjects(this.pickables,false)[0];if(hit){chooseAgent(hit.object.userData.agentId);}});
     this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(container);this.resize();
+  }
+  addDeposits(){
+    // Resource nodes: trees are handled by the existing forest, but rocks and apples must
+    // have a 3D object at their true simulated coordinates.
+    const stone=this.mat('#777c7b'),moss=this.mat('#678c69');
+    for(const p of this.sim.stones){
+      const g=new THREE.Group();g.position.set(p.x,terrainHeight(p.x,p.z),p.z);
+      for(let i=0;i<4;i++){
+        const x=Math.sin(p.id*1.2+i)*.55,z=Math.cos(p.id*1.6+i)*.51;
+        const rock=this.mesh(new THREE.DodecahedronGeometry(.52+i*.07,0),
+          i%3===0?moss:stone,x,.27,z);
+        rock.scale.y=.61;g.add(rock);
+      }
+      this.scene.add(g);
+    }
+    const bark=this.mat('#6f5643'),leaves=this.mat('#59864e');
+    const fruit=this.mat('#c95d43',.55);
+    for(const p of this.sim.apples){
+      const g=new THREE.Group();g.position.set(p.x,terrainHeight(p.x,p.z),p.z);
+      const trunk=this.mesh(new THREE.CylinderGeometry(.22,.32,2.1,7),bark,0,1.08,0);g.add(trunk);
+      for(const [x,y,z] of [[-.58,2.37,0],[.65,2.55,.18],[0,3.05,-.3]]){
+        const crown=this.mesh(new THREE.IcosahedronGeometry(1.05,1),leaves,x,y,z);
+        crown.scale.y=.82;g.add(crown);
+      }
+      for(let i=0;i<7;i++){
+        const angle=i*2.399;
+        g.add(this.mesh(new THREE.SphereGeometry(.12,8,6),fruit,
+          Math.cos(angle)*.8,2.0+(i%3)*.39,Math.sin(angle)*.72));
+      }
+      this.scene.add(g);
+    }
   }
   addRain(){
     const count=280,coords=new Float32Array(count*6);this.rainCoords=coords;
@@ -608,6 +645,13 @@ class Diorama {
       const arm=this.mesh(new THREE.CylinderGeometry(.11,.11,.57,7),shirt,sign*.44,1.03,0);
       g.add(leg,arm);g.userData.legs.push(leg);g.userData.arms.push(arm);
     }
+    const carried=new THREE.Group();carried.position.set(.52,1.02,.15);
+    const carryColors={wood:'#936544',stone:'#929d9b',apple:'#cb654e',berry:'#5b6b9c'};
+    for(let i=0;i<5;i++){
+      const mesh=this.mesh(new THREE.DodecahedronGeometry(.13,0),this.mat('#95694d'),(i%2)*.2,Math.floor(i/2)*.19,0);
+      mesh.visible=false;carried.add(mesh);
+    }
+    g.add(carried);g.userData.carried=carried;g.userData.carryColors=carryColors;
     const halo=this.mesh(new THREE.RingGeometry(.55,.67,28),new THREE.MeshBasicMaterial({color:'#e8ffd1',side:THREE.DoubleSide,transparent:true,opacity:.85}),0,.11,0,false);
     halo.rotation.x=-Math.PI/2;halo.visible=false;g.add(halo);g.userData.halo=halo;
     const bubbleCanvas=document.createElement('canvas');bubbleCanvas.width=128;bubbleCanvas.height=64;
@@ -676,14 +720,24 @@ class Diorama {
       g.userData.hair.rotation.y=g.userData.head.rotation.y;
       g.userData.bubble.visible=a.purpose==='talking';
       g.userData.halo.visible=i===selectedAgent;
+      for(let k=0;k<g.userData.carried.children.length;k++){
+        const item=g.userData.carried.children[k];
+        item.visible=k<(a.carry||0);
+        item.material.color.set(g.userData.carryColors[a.carryType]||'#b49b73');
+      }
     });
     for(const tree of this.treeModels)if(tree.resource.stock<=0 && tree.model.scale.y>.32)tree.model.scale.y=.32;
-    if(this.sim.construction){
-      if(!this.constructionVisual){this.constructionVisual=this.addShelter(this.sim.construction.x,this.sim.construction.z,.05);announce('Obyvatelé zahájili stavbu prvního přístřešku.');}
-      const p=this.sim.construction.progress,model=this.constructionVisual;model.walls.scale.y=clamp(p*1.4,0,1);model.walls.position.y=.3+model.walls.scale.y*1.2;
-      model.roof.visible=p>.62;model.door.visible=p>.75;model.chimney.visible=p>.8;
+    this.inventoryRefresh=(this.inventoryRefresh||0)+time;
+    if(this.inventoryRefresh>.35){
+      this.inventoryRefresh=0;
+      this.inventoryVisuals.sync(this.sim.material);
+      this.buildingVisuals.sync(this.sim.material,this.sim.construction);
     }
-    if(this.sim.shelters.length && !this.built){this.built=this.sim.shelters.length;if(this.constructionVisual){this.scene.remove(this.constructionVisual.group);this.constructionVisual=null;}for(const s of this.sim.shelters)this.addShelter(s.x,s.z);announce('První přístřešek vyrostl z rozhodnutí NPC.');}
+    const actualHeat=this.sim.material.fire.heat;
+    const lit=actualHeat>0;
+    this.fire.visible=lit;
+    this.campLight.intensity=lit?(1.4+(1-daylight)*3)*actualHeat/100:0;
+    this.fire.scale.y=lit?(.3+actualHeat/130)*(1+Math.sin(this.timer*9)*.14):.01;
     this.controls.update();this.renderer.render(this.scene,this.camera);
   }
   resize(){const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h,false);}
