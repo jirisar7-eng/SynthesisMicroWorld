@@ -140,16 +140,28 @@ class Civilization {
     const id=++this.meetingSeq;
     const far=islandOf(a)==='far';
     const x=(far?86:0)+this.rand(-2.7,2.7),z=this.rand(-3,3);
-    this.meetings.set(id,{first:a.id,second:b.id,ready:new Set(),done:false});
+    this.meetings.set(id,{first:a.id,second:b.id,ready:new Set(),done:false,startedAt:this.seconds});
     a.conversation=id;b.conversation=id;
-    this.go(a,'meet',{x:x-.45,z},'Chce si popovídat s '+b.name+' a posílit vztahy.');
-    this.go(b,'meet',{x:x+.45,z},'Přijal pozvání od '+a.name+' ke společnému rozhovoru.');
+    // A conversation is atomic. If even one route is impossible, neither
+    // participant may be left waiting indefinitely for a non-arriving peer.
+    const left=this.go(a,'meet',{x:x-.45,z},'Chce si popovídat s '+b.name+' a posílit vztahy.');
+    const right=left&&this.go(b,'meet',{x:x+.45,z},'Přijal pozvání od '+a.name+' ke společnému rozhovoru.');
+    if(!left||!right){
+      this.meetings.delete(id);
+      for(const person of [a,b]){
+        if(person.conversation!==id)continue;
+        person.conversation=null;
+        if(['meet','waiting'].includes(person.purpose))this.idle(person);
+      }
+      return false;
+    }
+    return true;
   }
   seekConversation(a){
-    const candidates=this.agents.filter(b=>b.id!==a.id && isLiving(b)&&!isDependent(b) && islandOf(b)===islandOf(a) && b.mode==='idle' && b.socialNeed>=38 && b.energy>23 && b.hunger<72);
+    const candidates=this.agents.filter(b=>b.id!==a.id && isLiving(b)&&!isDependent(b) && islandOf(b)===islandOf(a) && b.mode==='idle' && !b.conversation && Math.hypot(a.x-b.x,a.z-b.z)<12 && b.socialNeed>=38 && b.energy>23 && b.hunger<72);
     if(!candidates.length)return false;
     const b=candidates.sort((x,y)=>(y.socialNeed+(a.relationships[y.id]||0)*.12)-(x.socialNeed+(a.relationships[x.id]||0)*.12))[0];
-    this.beginConversation(a,b);return true;
+    return this.beginConversation(a,b);
   }
   go(a,purpose,target,reason,resource=null){
     // Interaction occurs at a reachable outer edge, NEVER inside its mesh.
@@ -970,6 +982,20 @@ class Civilization {
   update(dt){
     this.seconds+=dt;this.day=Math.floor(this.seconds/75)+1;
     advancePredators(this,dt);
+    // Abort meetings whose routes became blocked after their initial plan.
+    // Starvation must never arise because a partner waits forever.
+    for(const [id,meeting] of this.meetings){
+      if(meeting.done||this.seconds-(meeting.startedAt??0)<55)continue;
+      this.meetings.delete(id);
+      for(const person of [this.agents[meeting.first],this.agents[meeting.second]]){
+        if(!person||person.conversation!==id)continue;
+        person.conversation=null;
+        if(['waiting','meet'].includes(person.purpose)){
+          this.idle(person);person.choiceAt=this.seconds+1;
+          person.reason='Protějšek se nedostavil. Rozhovor odložil a řeší jiné potřeby.';
+        }
+      }
+    }
     this.material.tick(dt,this.weather.kind);
     if(this.seconds-this.lastPathReport>30){
       const trailStats=this.paths.summary();
