@@ -149,9 +149,45 @@ export class MaterialRenderer {
     this.group=new THREE.Group();scene.add(this.group);
     this.previousSignature='';this.basketCount=0;
     this.carriers=new Map();
+    // One low-cost instanced draw call for all loose-ground contact shadows.
+    // Per-item real-time shadow maps would waste hundreds of draws on phones.
+    this.groundShadows=null;this.groundShadowCapacity=0;
+    this.shadowDummy=new THREE.Object3D();
+    this.groundShadowMaterial=new THREE.MeshBasicMaterial({
+      color:'#28372b',transparent:true,opacity:.19,depthWrite:false,
+      polygonOffset:true,polygonOffsetFactor:-1
+    });
   }
   bindCarriers(people){
     this.carriers=new Map(people.map((group,id)=>[id,group]));
+  }
+  updateGroundShadows(records){
+    if(records.length>this.groundShadowCapacity){
+      if(this.groundShadows){
+        this.group.remove(this.groundShadows);
+        this.groundShadows.geometry.dispose();
+      }
+      this.groundShadowCapacity=Math.max(32,2**Math.ceil(Math.log2(records.length)));
+      const mesh=new THREE.InstancedMesh(new THREE.CircleGeometry(1,14),
+        this.groundShadowMaterial,this.groundShadowCapacity);
+      mesh.frustumCulled=false;mesh.renderOrder=1;
+      this.groundShadows=mesh;this.group.add(mesh);
+    }
+    if(!this.groundShadows)return;
+    const dummy=this.shadowDummy;
+    for(let i=0;i<records.length;i++){
+      const item=records[i];
+      const y=this.height(item.pos.x,item.pos.z)+.023;
+      dummy.position.set(item.pos.x,y,item.pos.z);
+      dummy.rotation.set(-Math.PI/2,0,0);
+      const radius=item.type==='wood'?.42:item.type==='stone'?.24:
+        item.type==='apple'?.23:item.type==='twig'?.32:.15;
+      dummy.scale.set(radius*1.65,radius*1.05,1);
+      dummy.updateMatrix();
+      this.groundShadows.setMatrixAt(i,dummy.matrix);
+    }
+    this.groundShadows.count=records.length;
+    this.groundShadows.instanceMatrix.needsUpdate=true;
   }
   sync(economy){
     for(const [id,container] of economy.containers){
@@ -169,7 +205,7 @@ export class MaterialRenderer {
       mesh.parent?.remove(mesh);this.itemMeshes.delete(id);
     }
     // One indexed layout pass: avoids O(n²) scans on mobile as stocks grow.
-    const offsets=new Map();
+    const offsets=new Map(),groundContacts=[];
     // Exact accounting: 1 object in data -> 1 visible piece (LOD may vary later).
     for(const item of economy.items){
       const container=economy.containers.get(item.container);
@@ -186,6 +222,11 @@ export class MaterialRenderer {
       const attachment=person?.userData?.cargoAnchor;
       const carried=!!attachment;
       const pos=carried?handPose(item,ordinal):economy.itemLayout(item,ordinal);
+      if(!carried && (
+        container?.kind==='drop'||
+        (container?.kind==='crate'&&ordinal>=16)||
+        (container?.kind==='site'&&item.type!=='wood')
+      ))groundContacts.push({pos,type:item.type});
       if(carried){
         // CRITICAL: the mesh is literally a child of the moving character.
         // Character translation/rotation happens every render frame, even
@@ -219,6 +260,7 @@ export class MaterialRenderer {
         mesh.material.color.copy(tone);
       }
     }
+    this.updateGroundShadows(groundContacts);
     for(const [id,group] of this.carriers){
       const carried=economy.items.filter(item=>item.container==='carry-'+id);
       if(group.userData.cargoSupport)group.userData.cargoSupport.visible=
