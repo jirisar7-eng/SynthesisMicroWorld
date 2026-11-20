@@ -138,7 +138,7 @@ class Diorama {
     this.people=[];this.pickables=[];
     for(const agent of sim.agents){const group=this.makePerson(agent);this.scene.add(group);this.people.push(group);}
     this.inventoryVisuals.bindCarriers(this.people);
-    this.inventoryVisuals.sync(sim.material,sim);
+    this.inventoryVisuals.sync(sim.material,sim,this.controls.target);
     // Debug-only read access for smoke tests and field performance checks.
     // No credentials, save payloads or mutations are exposed.
     Object.defineProperty(window,'__MW_VISUAL_STATS__',{
@@ -665,7 +665,7 @@ class Diorama {
     this.inventoryRefresh=(this.inventoryRefresh||0)+time;
     if(this.inventoryRefresh>(this.mobileGraphics?1.15:.6)){
       this.inventoryRefresh=0;
-      this.inventoryVisuals.sync(this.sim.material,this.sim);
+      this.inventoryVisuals.sync(this.sim.material,this.sim,this.controls.target);
       this.buildingVisuals.sync(this.sim.material,this.sim.construction);
     }
     const actualHeat=this.sim.material.fire.heat;
