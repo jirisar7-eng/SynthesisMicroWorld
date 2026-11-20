@@ -410,3 +410,16 @@ body.remote-world .god-flyout summary{font-size:11px}
   }
   .page-map .mobile-metrics span{padding:5px 4px;font-size:8px}
 }
+
+/* MW-019A2 regression hardening: the existing 'Next NPC' arrow was only
+ * 34×34 px and unreliable as a finger target in the nested mobile overview.
+ * Make the same existing control accessible without adding an action. */
+.page-overview #btn-next-npc{
+  min-width:48px;
+  min-height:48px;
+  flex:0 0 48px;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  position:relative;
+  z-index:1;
+}

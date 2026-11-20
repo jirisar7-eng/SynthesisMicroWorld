@@ -109,7 +109,7 @@ function basket(c,index,type){
   const radius=slot===0?0:.285;
   return withContainer(c,Math.cos(angle)*radius,
     Math.sin(angle)*radius,
-    .36+layer*.10,
+    .40+layer*.085,
     hash(index*13)*TWO_PI,.96+jitter(index*29,.08));
 }
 function loose(c,index,type){
@@ -144,6 +144,34 @@ function fieldTray(c,index){
   return withContainer(c,(col-2)*.18+jitter(index*3,.02),
     (row-1.5)*.16+jitter(index*7,.02),.14,
     hash(index*5)*TWO_PI,.9);
+}
+/** MW-019A2: 24 individual edible/seed items fit on one actual 2.55m yard
+ * pad. The old generic 16-cell algorithm pushed item 17 onto a second parcel
+ * beyond the pad's visual footprint, often through a basket or an NPC.
+ * A 5x5 bounded grid is horizontal, independent of the camera, and keeps
+ * the real item count and IDs exactly as they are.
+ */
+function yardFood(c,index,type){
+  if(index>=25)return overflowGround(c,index-25,type,2.65);
+  const col=index%5,row=Math.floor(index/5);
+  const radius=type==='apple'?.162:type==='berry'?.116:
+    type==='grain'?.20:type==='water'?.18:.09;
+  return withContainer(c,
+    (col-2)*.46+jitter(index*5,.016),
+    (row-2)*.46+jitter(index*7,.016),
+    radius+.015,hash(index*13)*TWO_PI,.96+jitter(index*17,.04));
+}
+/** Compact, low crossed twig bundles. The old 14-per-bundle spiral placed
+ * the second bundle outside its physical stockyard footprint. */
+function yardTwigs(c,index){
+  if(index>=28)return overflowGround(c,index-28,'twig',2.65);
+  const course=Math.floor(index/16),n=index%16;
+  const col=n%4,row=Math.floor(n/4);
+  return withContainer(c,
+    (col-1.5)*.50+jitter(index*3,.016),
+    (row-1.5)*.50+jitter(index*5,.016),
+    .10+course*.105,course*Math.PI/2+.22+jitter(index*11,.045),
+    .91+jitter(index*7,.05));
 }
 function warehouse(c,item,index){
   if(item.type==='wood')return logs(c,index,item.type);
@@ -186,8 +214,8 @@ export function layoutStockItem(item,container,index){
   if(container.kind==='yard'){
     if(item.type==='wood')return logs(container,n,item.type);
     if(item.type==='stone')return stones(container,n);
-    if(item.type==='twig')return twigs(container,n);
-    return overflowGround(container,n,item.type,1.75,false);
+    if(item.type==='twig')return yardTwigs(container,n);
+    return yardFood(container,n,item.type);
   }
   if(item.type==='wood')return logs(container,n,item.type);
   if(item.type==='twig')return twigs(container,n);
