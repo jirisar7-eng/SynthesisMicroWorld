@@ -104,3 +104,40 @@ test('MW-019A2: actual basket fruit protrudes above shallow rim, without tower',
   assert.ok(last.height>first.height);
   assert.ok(last.height<.5);
 });
+
+test('MW-019A2: exact legacy MW-012 overfilled crate becomes two low separated 2D parcels',()=>{
+  const m=new MaterialWorld();
+  m.items=[];m.nextId=1;
+  const stored=m.add('apple',80,'crate-1');
+  for(const item of stored)item.container='crate-1'; // old saved world schema
+  const original=stored.map(i=>({id:i.id,container:i.container,type:i.type}));
+  const shown=chooseVisualItems(m.items,m.containers,
+    {maxPerGroup:38,maxTotal:150,focus:{x:2.5,z:2.4}});
+  assert.equal(shown.length,38);
+  const layout=planStockVisuals(world(m),m,shown,terrainHeight);
+  assert.equal(layout.hidden.size,0,'safe locations must exist around the original crate');
+  const crate=layout.containers.get('crate-1');
+  const pad={shape:'box',id:'crate-1',...crate,hx:.83,hz:.76};
+  const overflow=shown.slice(16);
+  const parcels=[overflow.slice(0,16),overflow.slice(16,32)];
+  const centers=[];
+  for(const group of parcels){
+    const positions=group.map(i=>layout.itemPositions.get(i.id));
+    assert.ok(positions.every(Boolean));
+    const xs=positions.map(p=>p.x),zs=positions.map(p=>p.z);
+    assert.ok(Math.max(...xs)-Math.min(...xs)<1.5,
+      'legacy food must form a compact pad, never an endless straight row');
+    assert.ok(Math.max(...zs)-Math.min(...zs)<1.5);
+    centers.push({
+      x:(Math.max(...xs)+Math.min(...xs))/2,
+      z:(Math.max(...zs)+Math.min(...zs))/2
+    });
+    for(const p of positions){
+      assert.equal(footprintOverlaps(p.x,p.z,.24,.24,pad,.12),false,
+        'surplus cannot be drawn through the storage crate');
+    }
+  }
+  assert.ok(Math.hypot(centers[0].x-centers[1].x,centers[0].z-centers[1].z)>1.3,
+    'two surplus parcels must not overlap each other');
+  assert.deepEqual(stored.map(i=>({id:i.id,container:i.container,type:i.type})),original);
+});
