@@ -124,7 +124,7 @@ export function planStockVisuals(world,economy,visibleItems,height,
   // One ordinal stream per shared container+kind, so mixed edible goods do
   // not accidentally render on the same point. No O(n²) ID lookups.
   const ordinals=new Map();
-  const itemsByKind=new Map(),individual=[];
+  const itemsByKind=new Map(),overflowBundles=new Map(),individual=[];
   for(const item of [...visibleItems].sort(idSort)){
     const c=economy.containers.get(item.container);
     if(!c){hidden.add(item.id);continue;}
@@ -158,13 +158,24 @@ export function planStockVisuals(world,economy,visibleItems,height,
       const groupKey=c.id+':'+item.type;
       if(!itemsByKind.has(groupKey))itemsByKind.set(groupKey,[]);
       itemsByKind.get(groupKey).push(record);
+    }else if(VISUAL_CONTAINER_KINDS.has(c.kind)){
+      // The legacy MW-012 server can keep tens of thousands of units in
+      // ONE original crate. Group its surplus into small 2D parcels instead
+      // of letting individually displaced fruit form a long snake.
+      const cap=c.kind==='basket'?12:c.kind==='crate'?16:
+        c.kind==='tray'?20:c.kind==='yard'?25:0;
+      const parcel=Math.floor(Math.max(0,n-cap)/16);
+      const groupKey='overflow:'+c.id+':'+parcel;
+      if(!overflowBundles.has(groupKey))overflowBundles.set(groupKey,[]);
+      overflowBundles.get(groupKey).push(record);
     }else individual.push(record);
   }
 
-  // Staging material: preserve existing compact stone/log arrangements
-  // instead of scattering every log individually; move entire bundle into
-  // the nearest physically free plot beside its construction.
-  const staged=[...itemsByKind.entries()].sort(([a],[b])=>a.localeCompare(b));
+  // Preserve construction staging and legacy crate/basket overflow parcels,
+  // moving each low group into one collision-free patch. In particular the
+  // old MW-012 simulation has no finite outdoor yard storage.
+  const staged=[...itemsByKind.entries(),...overflowBundles.entries()]
+    .sort(([a],[b])=>a.localeCompare(b));
   for(const [key,records] of staged){
     let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
     for(const {pos,radius} of records){
