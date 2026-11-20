@@ -1,0 +1,60 @@
+name: MW-019A Storage and Ground Collision Polish
+on:
+  push:
+    branches: [feature/mw-019a-storage-ground-collision-polish]
+  pull_request:
+    paths:
+      - 'src/main.js'
+      - 'src/material-renderer.js'
+      - 'src/visual-stockyard.js'
+      - 'tests/visual-stockyard.test.js'
+      - 'scripts/mw019a-browser-smoke.mjs'
+      - 'deploy/vps/mw011/web-only-mw019a.sh'
+      - '.github/workflows/mw019a-stockyard-polish.yml'
+permissions:
+  contents: read
+jobs:
+  real-world:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    env:
+      MW011_RELEASE: mw019a-ci
+      MW011_HOST_PORT: '18585'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Validate pure client-only changes and guarded deploy
+        run: |
+          node --check src/visual-stockyard.js
+          node --check src/material-renderer.js
+          node --check src/main.js
+          node --check scripts/mw019a-browser-smoke.mjs
+          bash -n deploy/vps/mw011/web-only-mw019a.sh
+      - name: Install without asset sync or modifying lockfile
+        run: npm install --no-audit --no-fund --ignore-scripts --no-package-lock
+      - name: Test real inventory identity and collision-free ground placement
+        run: npm test
+      - name: Build shipping 3D viewer
+        env:
+          SKIP_POLYHAVEN_ASSETS: '1'
+        run: npm run build -- --target es2022
+      - name: Start isolated persistent server and web in Docker
+        run: |
+          set -euo pipefail
+          stack=(docker compose -f deploy/vps/mw011/compose.yaml)
+          "${stack[@]}" build sim web
+          "${stack[@]}" up -d --no-build sim web
+          for i in $(seq 1 35); do
+            if curl -fsS --max-time 3 http://127.0.0.1:18585/healthz >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:18585/api/world -o /dev/null
+      - name: Android-sized Chromium 3D and navigation smoke
+        run: timeout 125s node scripts/mw019a-browser-smoke.mjs
+      - name: Tear down isolated CI world
+        if: always()
+        run: docker compose -f deploy/vps/mw011/compose.yaml down || true
