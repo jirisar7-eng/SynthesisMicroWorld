@@ -143,10 +143,17 @@ export function planStockVisuals(world,economy,visibleItems,height,
     // Legacy server saves can hold hundreds of real items inside a single
     // original basket or tray. Their overflowing graphical pieces are NOT
     // protected by the container footprint and must receive real free slots.
-    if(VISUAL_CONTAINER_KINDS.has(c.kind)&&!isOverflow){
+    const radius=stockItemRadius(item.type);
+    const [padHalfX,padHalfZ]=extent(c);
+    const insidePad=Math.abs(pos.x-anchor.x)+radius<=padHalfX-.045 &&
+      Math.abs(pos.z-anchor.z)+radius<=padHalfZ-.045;
+    // A container's collision-safe placement protects only its actual pad.
+    // Previous versions incorrectly exempted 17th–24th yard items and
+    // out-of-bounds twig/shelf courses from all per-item collision checks.
+    if(VISUAL_CONTAINER_KINDS.has(c.kind)&&!isOverflow&&insidePad){
       itemPositions.set(item.id,pos);continue;
     }
-    const record={item,c,pos,radius:stockItemRadius(item.type)};
+    const record={item,c,pos,radius};
     if(c.kind==='site'){
       const groupKey=c.id+':'+item.type;
       if(!itemsByKind.has(groupKey))itemsByKind.set(groupKey,[]);
