@@ -458,11 +458,21 @@ class Diorama {
     const dummy=new THREE.Object3D();
     // Dense but cheap grass tufts, distributed in clumps around the viewing area.
     const grasses=new THREE.InstancedMesh(new THREE.ConeGeometry(.14,.82,3),this.mat('#6f9f5e'),1750);
+    let grassCount=0;
     for(let i=0;i<1750;i++){
       const r=3.5+Math.sqrt(rng())*36,a=rng()*Math.PI*2,x=Math.cos(a)*r,z=Math.sin(a)*r;
-      dummy.position.set(x,terrainHeight(x,z)+.28,z);dummy.scale.set(.4+rng()*.85,.35+rng()*1.1,.4+rng()*.7);
-      dummy.rotation.set(0,rng()*6.28,0);dummy.updateMatrix();grasses.setMatrixAt(i,dummy.matrix);
+      const sx=.4+rng()*.85,sy=.35+rng()*1.1,sz=.4+rng()*.7;
+      const radius=.14*Math.max(sx,sz)+.07;
+      if(terrainHeight(x,z)<-.34||
+        !this.acceptDecoration('grass-'+i,x,z,radius))continue;
+      dummy.position.set(x,terrainHeight(x,z)+.28,z);
+      dummy.scale.set(sx,sy,sz);
+      dummy.rotation.set(0,rng()*6.28,0);dummy.updateMatrix();
+      grasses.setMatrixAt(grassCount,dummy.matrix);
+      this.recordDecoration(grasses,grassCount,dummy.matrix,x,z,radius);
+      grassCount++;
     }
+    grasses.count=grassCount;
     grasses.instanceMatrix.needsUpdate=true;grasses.frustumCulled=false;this.scene.add(grasses);
 
     // Four distinct colors of meadow wildflowers; stems and blooms are GPU instanced.
@@ -470,17 +480,29 @@ class Diorama {
     const stems=new THREE.InstancedMesh(new THREE.CylinderGeometry(.025,.037,.47,4),this.mat('#57834b'),540);
     const blooms=petals.map(m=>new THREE.InstancedMesh(new THREE.DodecahedronGeometry(.13,0),m,135));
     const flowerCounts=[0,0,0,0];
+    let flowerCount=0;
     for(let i=0;i<540;i++){
       const r=4.4+Math.sqrt(rng())*34,a=rng()*Math.PI*2,x=Math.cos(a)*r,z=Math.sin(a)*r;
-      const ground=terrainHeight(x,z);const height=.65+rng()*.75;
+      const ground=terrainHeight(x,z),height=.65+rng()*.75;
+      if(ground<-.34||!this.acceptDecoration('flower-'+i,x,z,.24))continue;
       dummy.position.set(x,ground+.16*height,z);dummy.scale.set(.8,height,.8);
-      dummy.rotation.set(0,rng()*6.28,.04*Math.sin(i));dummy.updateMatrix();stems.setMatrixAt(i,dummy.matrix);
-      const color=i%4;const n=flowerCounts[color]++;
+      dummy.rotation.set(0,rng()*6.28,.04*Math.sin(i));dummy.updateMatrix();
+      stems.setMatrixAt(flowerCount,dummy.matrix);
+      this.recordDecoration(stems,flowerCount,dummy.matrix,x,z,.24);
+      const color=i%4,n=flowerCounts[color]++;
       dummy.position.set(x,ground+.31*height,z);dummy.scale.setScalar(.8+rng()*.45);
-      dummy.rotation.set(0,rng()*6.28,0);dummy.updateMatrix();blooms[color].setMatrixAt(n,dummy.matrix);
+      dummy.rotation.set(0,rng()*6.28,0);dummy.updateMatrix();
+      blooms[color].setMatrixAt(n,dummy.matrix);
+      this.recordDecoration(blooms[color],n,dummy.matrix,x,z,.24);
+      flowerCount++;
     }
+    stems.count=flowerCount;
     stems.instanceMatrix.needsUpdate=true;stems.frustumCulled=false;this.scene.add(stems);
-    for(const b of blooms){b.instanceMatrix.needsUpdate=true;b.frustumCulled=false;this.scene.add(b);}
+    for(let i=0;i<blooms.length;i++){
+      blooms[i].count=flowerCounts[i];
+      blooms[i].instanceMatrix.needsUpdate=true;
+      blooms[i].frustumCulled=false;this.scene.add(blooms[i]);
+    }
 
     // Mixed bushes and ferns introduce a middle vegetation layer beneath trees.
     const shrubMaterials=[this.mat('#5f915c'),this.mat('#7aa36b'),this.mat('#4a8061'),this.mat('#8da45d')];
@@ -488,38 +510,65 @@ class Diorama {
     const shrubCounts=[0,0,0,0];
     for(let i=0;i<280;i++){
       const r=6.1+Math.sqrt(rng())*35,a=rng()*Math.PI*2,x=Math.cos(a)*r,z=Math.sin(a)*r;
+      const sx=.68+rng()*.55,sy=.34+rng()*.32,sz=.7+rng()*.6;
+      const radius=.72*Math.max(sx,sz)+.09;
+      if(terrainHeight(x,z)<-.34||
+        !this.acceptDecoration('shrub-'+i,x,z,radius))continue;
       const color=i%4,k=shrubCounts[color]++;
       dummy.position.set(x,terrainHeight(x,z)+.31,z);
-      dummy.scale.set(.68+rng()*.55,.34+rng()*.32,.7+rng()*.6);
-      dummy.rotation.set(0,rng()*6.28,0);dummy.updateMatrix();shrubs[color].setMatrixAt(k,dummy.matrix);
+      dummy.scale.set(sx,sy,sz);
+      dummy.rotation.set(0,rng()*6.28,0);dummy.updateMatrix();
+      shrubs[color].setMatrixAt(k,dummy.matrix);
+      this.recordDecoration(shrubs[color],k,dummy.matrix,x,z,radius);
     }
-    for(const b of shrubs){b.instanceMatrix.needsUpdate=true;this.scene.add(b);}
+    for(let i=0;i<shrubs.length;i++){
+      shrubs[i].count=shrubCounts[i];
+      shrubs[i].instanceMatrix.needsUpdate=true;this.scene.add(shrubs[i]);
+    }
 
     // Reed belts give the shoreline a recognisable biome transition.
     const reed=new THREE.InstancedMesh(new THREE.CylinderGeometry(.025,.08,1,4),this.mat('#71946b'),260);
     const cattails=new THREE.InstancedMesh(new THREE.CylinderGeometry(.085,.085,.32,6),this.mat('#97704e'),80);
-    let cat=0;
+    let cat=0,reedCount=0;
     for(let i=0;i<260;i++){
       const a=rng()*6.28,r=40+rng()*3,x=Math.cos(a)*r,z=Math.sin(a)*r;
-      const y=terrainHeight(x,z);const height=.48+rng()*.95;
-      dummy.position.set(x,y+height*.52,z);dummy.scale.set(.8,height,.8);dummy.rotation.set(0,rng()*6.28,0);
-      dummy.updateMatrix();reed.setMatrixAt(i,dummy.matrix);
-      if(i%4===0){dummy.position.set(x,y+height+.08,z);dummy.scale.setScalar(.7+rng()*.5);
-        dummy.updateMatrix();cattails.setMatrixAt(cat++,dummy.matrix);}
+      const y=terrainHeight(x,z),height=.48+rng()*.95;
+      if(y<-.34||!this.acceptDecoration('reed-'+i,x,z,.19))continue;
+      dummy.position.set(x,y+height*.52,z);dummy.scale.set(.8,height,.8);
+      dummy.rotation.set(0,rng()*6.28,0);
+      dummy.updateMatrix();reed.setMatrixAt(reedCount,dummy.matrix);
+      this.recordDecoration(reed,reedCount,dummy.matrix,x,z,.19);
+      reedCount++;
+      if(i%4===0){
+        dummy.position.set(x,y+height+.08,z);dummy.scale.setScalar(.7+rng()*.5);
+        dummy.updateMatrix();cattails.setMatrixAt(cat,dummy.matrix);
+        this.recordDecoration(cattails,cat,dummy.matrix,x,z,.19);
+        cat++;
+      }
     }
-    reed.instanceMatrix.needsUpdate=true;cattails.instanceMatrix.needsUpdate=true;this.scene.add(reed,cattails);
+    reed.count=reedCount;cattails.count=cat;
+    reed.instanceMatrix.needsUpdate=true;cattails.instanceMatrix.needsUpdate=true;
+    this.scene.add(reed,cattails);
 
     // Small woodland mushrooms and fallen branches.
     const stemsM=new THREE.InstancedMesh(new THREE.CylinderGeometry(.055,.072,.29,5),this.mat('#ded0af'),70);
     const capsM=new THREE.InstancedMesh(new THREE.ConeGeometry(.24,.22,7),this.mat('#b67755'),70);
-    for(let i=0;i<70;i++){
+    let mushroomCount=0;
+    for(let i=0;i<70&&this.sim.trees.length;i++){
       const t=this.sim.trees[i%this.sim.trees.length],a=rng()*6.28,r=1.1+rng()*2.5;
       const x=t.x+Math.cos(a)*r,z=t.z+Math.sin(a)*r,y=terrainHeight(x,z);
-      dummy.position.set(x,y+.18,z);dummy.scale.setScalar(.7+rng()*.5);dummy.rotation.set(0,rng()*6.28,0);
-      dummy.updateMatrix();stemsM.setMatrixAt(i,dummy.matrix);
-      dummy.position.y+=.17;dummy.updateMatrix();capsM.setMatrixAt(i,dummy.matrix);
+      if(y<-.34||!this.acceptDecoration('mushroom-'+i,x,z,.28))continue;
+      dummy.position.set(x,y+.18,z);dummy.scale.setScalar(.7+rng()*.5);
+      dummy.rotation.set(0,rng()*6.28,0);
+      dummy.updateMatrix();stemsM.setMatrixAt(mushroomCount,dummy.matrix);
+      this.recordDecoration(stemsM,mushroomCount,dummy.matrix,x,z,.28);
+      dummy.position.y+=.17;dummy.updateMatrix();capsM.setMatrixAt(mushroomCount,dummy.matrix);
+      this.recordDecoration(capsM,mushroomCount,dummy.matrix,x,z,.28);
+      mushroomCount++;
     }
-    stemsM.instanceMatrix.needsUpdate=true;capsM.instanceMatrix.needsUpdate=true;this.scene.add(stemsM,capsM);
+    stemsM.count=mushroomCount;capsM.count=mushroomCount;
+    stemsM.instanceMatrix.needsUpdate=true;capsM.instanceMatrix.needsUpdate=true;
+    this.scene.add(stemsM,capsM);
     const wood=this.mat('#8b6c4f');
     for(const p of this.sim.fallenLogs){
       const x=p.x,z=p.z;
