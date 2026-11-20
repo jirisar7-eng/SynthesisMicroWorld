@@ -109,7 +109,7 @@ function basket(c,index,type){
   const radius=slot===0?0:.285;
   return withContainer(c,Math.cos(angle)*radius,
     Math.sin(angle)*radius,
-    .36+layer*.10,
+    .40+layer*.085,
     hash(index*13)*TWO_PI,.96+jitter(index*29,.08));
 }
 function loose(c,index,type){
