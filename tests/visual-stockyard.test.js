@@ -123,10 +123,14 @@ test('MW-019A-005: ground drops do not overlap a campfire, each other or nearby 
 test('MW-019A-006: old saves with an overfilled crate and basket do not form a line through buildings',()=>{
   const m=new MaterialWorld();
   // Treat these real item IDs as legacy data; never rebalance the actual stock.
-  m.add('apple',24,'crate-1');
+  const crateGoods=m.add('apple',24,'crate-1');
+  // Simulate an older persisted MW-012 save with quantities above current
+  // capacity. The production server is not migrated in MW-019A.
+  for(const item of crateGoods)item.container='crate-1';
   m.containers.set('basket-old',{id:'basket-old',kind:'basket',
     x:2.5,z:3.1,name:'Starý koš'});
-  m.add('apple',24,'basket-old');
+  const basketGoods=m.add('apple',24,'basket-old');
+  for(const item of basketGoods)item.container='basket-old';
   const old=m.items.map(i=>({id:i.id,container:i.container}));
   const result=visual(m);
   for(const id of ['crate-1','basket-old']){
