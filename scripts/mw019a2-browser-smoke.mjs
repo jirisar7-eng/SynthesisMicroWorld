@@ -189,6 +189,14 @@ async function main(){
   await until('overview contents',()=>evaluate(`document.body.classList.contains('page-overview') &&
     document.querySelector('#npc-name')?.textContent?.length>0`));
   const name=await evaluate(`document.querySelector('#npc-name').textContent`);
+  const nextControl=await evaluate(`(()=>{
+    const button=document.querySelector('#btn-next-npc');
+    const r=button.getBoundingClientRect();
+    return {width:r.width,height:r.height,label:button.getAttribute('aria-label')};
+  })()`);
+  assert.ok(nextControl.width>=44&&nextControl.height>=44,
+    'Next NPC must be a finger-sized control in the mobile overview');
+  assert.equal(nextControl.label,'Další obyvatel');
   await touch('#btn-next-npc');
   await until('next citizen in overview',()=>evaluate(
     `document.querySelector('#npc-name').textContent!==${JSON.stringify(name)}`));
