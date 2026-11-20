@@ -9,7 +9,6 @@ import {solidFootprints} from './spatial-world.js';
  * This registry NEVER mutates the authoritative server world.
  */
 const CELL=3;
-const key=(x,z)=>Math.floor(x/CELL)+':'+Math.floor(z/CELL);
 const finite=(n)=>Number.isFinite(n);
 const extra=(id)=>{
   const s=String(id||'');
@@ -59,8 +58,8 @@ export class VisualOccupancy {
   }
   nearby(p){
     const {hx,hz}=extent(p);
-    const lowX=Math.floor((p.x-hx)/CELL),highX=Math.floor((p.x+hx)/CELL);
-    const lowZ=Math.floor((p.z-hz)/CELL),highZ=Math.floor((p.z+hz)/CELL);
+    const lowX=Math.floor((p.x-hx-.2)/CELL),highX=Math.floor((p.x+hx+.2)/CELL);
+    const lowZ=Math.floor((p.z-hz-.2)/CELL),highZ=Math.floor((p.z+hz+.2)/CELL);
     const result=new Set();
     for(let ix=lowX;ix<=highX;ix++)for(let iz=lowZ;iz<=highZ;iz++){
       for(const other of this.grid.get(ix+':'+iz)||[])result.add(other);
@@ -80,8 +79,8 @@ export class VisualOccupancy {
     if(!finite(hx)||!finite(hz)||hx<0||hz<0)
       throw new TypeError('Invalid footprint extent');
     this.objects.push(p);
-    const lowX=Math.floor((p.x-hx)/CELL),highX=Math.floor((p.x+hx)/CELL);
-    const lowZ=Math.floor((p.z-hz)/CELL),highZ=Math.floor((p.z+hz)/CELL);
+    const lowX=Math.floor((p.x-hx-.2)/CELL),highX=Math.floor((p.x+hx+.2)/CELL);
+    const lowZ=Math.floor((p.z-hz-.2)/CELL),highZ=Math.floor((p.z+hz+.2)/CELL);
     for(let ix=lowX;ix<=highX;ix++)for(let iz=lowZ;iz<=highZ;iz++){
       const tile=ix+':'+iz;
       if(!this.grid.has(tile))this.grid.set(tile,[]);
@@ -99,10 +98,11 @@ export class VisualOccupancy {
    */
   fixedConflicts(limit=80){
     const result=[],seen=new Set();
+    const authored=new Set(this.objects.slice(0,this.fixedCount));
     for(let i=0;i<this.fixedCount;i++){
       const p=this.objects[i];
       for(const other of this.nearby(p)){
-        if(other===p||!this.objects.slice(0,this.fixedCount).includes(other))continue;
+        if(other===p||!authored.has(other))continue;
         const ids=[String(p.id),String(other.id)].sort();
         const token=ids.join('|');
         if(seen.has(token)||!physicalIntersects(p,other))continue;
