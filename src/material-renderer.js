@@ -89,14 +89,14 @@ function crateMesh(container,h){
 function basketMesh(container,h){
   const group=groundGroup(container,h,.06,.10);
   const wicker=material('#b18a52');
-  const shell=new THREE.Mesh(new THREE.CylinderGeometry(.55,.4,.5,12,1,true),wicker);
-  shell.material.side=THREE.DoubleSide; shell.position.y=.35;group.add(shell);
+  const shell=new THREE.Mesh(new THREE.CylinderGeometry(.55,.4,.42,12,1,true),wicker);
+  shell.material.side=THREE.DoubleSide; shell.position.y=.31;group.add(shell);
   const bottom=new THREE.Mesh(new THREE.CylinderGeometry(.43,.43,.07,12),wicker);
   bottom.position.y=.12;group.add(bottom);
   const rim=new THREE.Mesh(new THREE.TorusGeometry(.52,.055,6,12),wicker);
-  rim.rotation.x=Math.PI/2;rim.position.y=.61;group.add(rim);
+  rim.rotation.x=Math.PI/2;rim.position.y=.525;group.add(rim);
   const handle=new THREE.Mesh(new THREE.TorusGeometry(.57,.038,6,16,Math.PI),wicker);
-  handle.position.y=.61;handle.rotation.z=Math.PI;group.add(handle);
+  handle.position.y=.525;handle.rotation.z=Math.PI;group.add(handle);
   return group;
 }
 
