@@ -220,11 +220,13 @@ export class MaterialRenderer {
     this.groundShadows.count=records.length;
     this.groundShadows.instanceMatrix.needsUpdate=true;
   }
-  sync(economy,world=null){
+  sync(economy,world=null,focus=null){
     // Position computation is a pure view over the server's real world,
     // NEVER a write to its containers or items.
+    // The observer's camera focus selects a balanced sample of real goods
+    // around the part of the village currently being inspected.
     const visualItems=chooseVisualItems(
-      economy.items,economy.containers,this.visualBudget);
+      economy.items,economy.containers,{...this.visualBudget,focus});
     const layout=planStockVisuals(world||{material:economy},
       economy,visualItems,this.height,{previousAnchors:this.visualAnchors});
     this.visualAnchors=layout.containers;
