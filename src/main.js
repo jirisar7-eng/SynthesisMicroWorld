@@ -148,6 +148,7 @@ class Diorama {
     for(const agent of sim.agents){const group=this.makePerson(agent);this.scene.add(group);this.people.push(group);}
     this.inventoryVisuals.bindCarriers(this.people);
     this.inventoryVisuals.sync(sim.material,sim,this.controls.target);
+    this.refreshDecorClearance();
     // Debug-only read access for smoke tests and field performance checks.
     // No credentials, save payloads or mutations are exposed.
     Object.defineProperty(window,'__MW_VISUAL_STATS__',{
@@ -376,6 +377,73 @@ class Diorama {
       if(!this.springModels)this.springModels=[];
       this.springModels.push({source,pool});
     }
+  }
+  /** One rule for every physical or decorative mesh: do not occupy a
+   * footprint already owned by an existing object. Deterministic rejections
+   * do not move or delete any saved resource or NPC.
+   */
+  acceptDecoration(id,x,z,radius){
+    return this.decorOccupancy.reserveCircle(id,x,z,radius);
+  }
+  recordDecoration(mesh,index,matrix,x,z,radius){
+    this.decorRecords.push({
+      mesh,index,matrix:matrix.clone(),x,z,radius,hidden:false
+    });
+  }
+  /** Buildings and inventories change while the same browser stays open.
+   * Revalidate existing static vegetation when the authoritative snapshot
+   * adds a wall, basket, wood pile or dropped resource. A hidden decorative
+   * instance can reappear when that space becomes available again.
+   */
+  refreshDecorClearance(){
+    const fixed=visualFixedFootprints(this.sim);
+    for(const [id,p] of this.inventoryVisuals.visualAnchors){
+      const c=this.sim.material.containers.get(id);
+      if(!c)continue;
+      const kind=c.kind;
+      if(kind==='pile'){
+        fixed.push({id:'visual-container-'+id,shape:'circle',x:p.x,z:p.z,
+          r:id==='stonepile'?1.6:1.72});
+      }else if(kind==='shelves'){
+        fixed.push({id:'visual-container-'+id,shape:'box',x:p.x,z:p.z,
+          hx:1.94,hz:1.48});
+      }else if(kind==='yard'){
+        fixed.push({id:'visual-container-'+id,shape:'box',x:p.x,z:p.z,
+          hx:1.52,hz:1.52});
+      }else if(kind==='basket'||kind==='crate'||kind==='tray'){
+        fixed.push({id:'visual-container-'+id,shape:'circle',x:p.x,z:p.z,
+          r:kind==='basket'?.77:1.00});
+      }
+    }
+    for(const [id,item] of this.inventoryVisuals.itemMeshes){
+      if(item.parent===this.inventoryVisuals.group&&item.visible){
+        fixed.push({id:'visible-stock-'+id,shape:'circle',
+          x:item.position.x,z:item.position.z,r:.27});
+      }
+    }
+    const signature=fixed.map(p=>
+      String(p.id)+':'+p.x.toFixed(2)+':'+p.z.toFixed(2)+':'+
+      (p.r??p.hx).toFixed(2)+':'+(p.hz??'')).join('|');
+    if(signature===this.lastDecorSignature)return;
+    this.lastDecorSignature=signature;
+    const occupancy=new VisualOccupancy(fixed);
+    const zero=new THREE.Matrix4().makeScale(0,0,0);
+    const touched=new Set();
+    let hidden=0;
+    for(const record of this.decorRecords){
+      const unavailable=!occupancy.free({
+        id:'decor-probe',shape:'circle',
+        x:record.x,z:record.z,r:record.radius
+      });
+      if(unavailable)hidden++;
+      if(unavailable===record.hidden)continue;
+      record.hidden=unavailable;
+      record.mesh.setMatrixAt(record.index,
+        unavailable?zero:record.matrix);
+      touched.add(record.mesh);
+    }
+    for(const mesh of touched)mesh.instanceMatrix.needsUpdate=true;
+    this.hiddenDecorations=hidden;
   }
   addRocksAndGrass(){
     // Ground composition: mixed stone shapes instead of identical angular pebbles.
