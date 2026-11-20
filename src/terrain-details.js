@@ -130,7 +130,8 @@ export function createTrampledCamp(scene,height){
 }
 
 /** Low-cost fallen leaves, needles and pebbles to break regular grass patterns. */
-export function createGroundClutter(scene,height,trees){
+export function createGroundClutter(scene,height,trees,occupancy=null,register=null){
+  if(!trees?.length)return 0;
   const count=540,dummy=new THREE.Object3D();
   const leaves=['#9e8d65','#7f8651','#b19b70','#536c45'].map(color=>
     new THREE.InstancedMesh(new THREE.PlaneGeometry(.22,.12),
@@ -140,18 +141,25 @@ export function createGroundClutter(scene,height,trees){
     const t=trees[i%trees.length],theta=noise(i,7)*Math.PI*2;
     const r=.6+noise(i,13)*3.5;
     const x=t.x+Math.cos(theta)*r,z=t.z+Math.sin(theta)*r;
+    const sx=.6+noise(i,2)*1.4,sy=.6+noise(i,3)*1.6;
+    const radius=.14*Math.max(sx,sy)+.08;
+    if(height(x,z)<-.34||
+      (occupancy&&!occupancy.reserveCircle('leaf-'+i,x,z,radius)))continue;
     const ix=i%4,n=used[ix]++;
     dummy.position.set(x,height(x,z)+.06,z);
-    dummy.scale.set(.6+noise(i,2)*1.4,.6+noise(i,3)*1.6,1);
+    dummy.scale.set(sx,sy,1);
     dummy.rotation.set(-Math.PI/2,0,theta);
     dummy.updateMatrix();
     leaves[ix].setMatrixAt(n,dummy.matrix);
+    if(register)register(leaves[ix],n,dummy.matrix,x,z,radius);
   }
-  for(const mesh of leaves){
-    mesh.instanceMatrix.needsUpdate=true;
-    mesh.frustumCulled=false;
-    scene.add(mesh);
+  for(let i=0;i<leaves.length;i++){
+    leaves[i].count=used[i];
+    leaves[i].instanceMatrix.needsUpdate=true;
+    leaves[i].frustumCulled=false;
+    scene.add(leaves[i]);
   }
+  return used.reduce((a,b)=>a+b,0);
 }
 
 /**
