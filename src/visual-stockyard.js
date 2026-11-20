@@ -137,7 +137,13 @@ export function planStockVisuals(world,economy,visibleItems,height,
     if(unplacedContainers.has(c.id)){hidden.add(item.id);continue;}
     const anchor=containers.get(c.id)||{x:c.x,z:c.z};
     const pos=layoutStockItem(item,{...c,...anchor},n);
-    if(VISUAL_CONTAINER_KINDS.has(c.kind)){
+    const isOverflow=(c.kind==='basket'&&n>=12)||
+      (c.kind==='crate'&&n>=16)||
+      (c.kind==='tray'&&n>=20);
+    // Legacy server saves can hold hundreds of real items inside a single
+    // original basket or tray. Their overflowing graphical pieces are NOT
+    // protected by the container footprint and must receive real free slots.
+    if(VISUAL_CONTAINER_KINDS.has(c.kind)&&!isOverflow){
       itemPositions.set(item.id,pos);continue;
     }
     const record={item,c,pos,radius:stockItemRadius(item.type)};
