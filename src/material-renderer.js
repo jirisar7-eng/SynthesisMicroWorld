@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {RECIPES,ITEM_INFO} from './material-world.js';
 import {stockSlotGroup} from './stockpile-layout.js';
 import {chooseVisualItems} from './visual-lod.js';
+import {planStockVisuals} from './visual-stockyard.js';
 import {handPose,cargoClass} from './carry-poses.js';
 import {terrainPose,foundationContact} from './terrain-contact.js';
 
@@ -174,6 +175,8 @@ export class MaterialRenderer {
   constructor(scene,height,visualBudget={maxPerGroup:38,maxTotal:680}){
     this.scene=scene;this.height=height;
     this.visualBudget=visualBudget;this.itemMeshes=new Map();this.containers=new Map();
+    this.visualAnchors=new Map();
+    this.stockLayoutStats={relocatedContainers:0,relocatedItems:0,unplaced:0};
     this.group=new THREE.Group();scene.add(this.group);
     this.previousSignature='';this.basketCount=0;
     this.carriers=new Map();
@@ -217,24 +220,54 @@ export class MaterialRenderer {
     this.groundShadows.count=records.length;
     this.groundShadows.instanceMatrix.needsUpdate=true;
   }
-  sync(economy){
+  sync(economy,world=null){
+    // Position computation is a pure view over the server's real world,
+    // NEVER a write to its containers or items.
+    const visualItems=chooseVisualItems(
+      economy.items,economy.containers,this.visualBudget);
+    const layout=planStockVisuals(world||{material:economy},
+      economy,visualItems,this.height,{previousAnchors:this.visualAnchors});
+    this.visualAnchors=layout.containers;
+    this.stockLayoutStats=layout.stats;
+
     for(const [id,container] of economy.containers){
-      if(this.containers.has(id))continue;
+      const anchor=layout.containers.get(id);
+      const previous=this.containers.get(id);
+      if(!anchor){
+        if(previous)previous.visible=false;
+        continue;
+      }
+      const unchanged=previous?.userData?.visualAnchor &&
+        Math.hypot(previous.userData.visualAnchor.x-anchor.x,
+          previous.userData.visualAnchor.z-anchor.z)<.025;
+      if(unchanged){previous.visible=true;continue;}
+      if(previous){
+        this.group.remove(previous);
+        previous.traverse(node=>{
+          node.geometry?.dispose?.();
+          if(Array.isArray(node.material))node.material.forEach(m=>m.dispose());
+          else node.material?.dispose?.();
+        });
+        this.containers.delete(id);
+      }
+      const shown={...container,...anchor};
       let mesh=null;
-      if(container.kind==='crate')mesh=crateMesh(container,this.height);
-      else if(container.kind==='basket')mesh=basketMesh(container,this.height);
-      else if(container.kind==='shelves')mesh=shedMesh(container,this.height);
-      else if(container.kind==='pile')mesh=pileBaseMesh(container,this.height);
-      else if(container.kind==='tray')mesh=seedTrayMesh(container,this.height);
-      else if(container.kind==='yard')mesh=temporaryYardMesh(container,this.height);
-      if(mesh){this.group.add(mesh);this.containers.set(id,mesh);}
+      if(container.kind==='crate')mesh=crateMesh(shown,this.height);
+      else if(container.kind==='basket')mesh=basketMesh(shown,this.height);
+      else if(container.kind==='shelves')mesh=shedMesh(shown,this.height);
+      else if(container.kind==='pile')mesh=pileBaseMesh(shown,this.height);
+      else if(container.kind==='tray')mesh=seedTrayMesh(shown,this.height);
+      else if(container.kind==='yard')mesh=temporaryYardMesh(shown,this.height);
+      if(mesh){
+        mesh.userData.visualAnchor={x:anchor.x,z:anchor.z};
+        this.group.add(mesh);this.containers.set(id,mesh);
+      }
     }
     // Stock is still exact in the authoritative simulation and every item
     // keeps its ID. We render a representative sample to avoid thousands of
     // separate WebGL draw calls on Android (8,000+ food in current world).
-    const visualItems=chooseVisualItems(
-      economy.items,economy.containers,this.visualBudget);
-    const existing=new Set(visualItems.map(i=>i.id));
+    const existing=new Set(visualItems
+      .filter(i=>!layout.hidden.has(i.id)).map(i=>i.id));
     for(const [id,mesh] of this.itemMeshes)if(!existing.has(id)){
       mesh.parent?.remove(mesh);this.itemMeshes.delete(id);
     }
@@ -242,6 +275,7 @@ export class MaterialRenderer {
     const offsets=new Map(),groundContacts=[];
     // Every selected item keeps its real ID and physical position.
     for(const item of visualItems){
+      if(layout.hidden.has(item.id))continue;
       const container=economy.containers.get(item.container);
       const key=item.container+':'+stockSlotGroup(item,container);
       const ordinal=offsets.get(key)||0;
@@ -255,7 +289,8 @@ export class MaterialRenderer {
       const person=container?.kind==='carry'?this.carriers.get(container.ownerId):null;
       const attachment=person?.userData?.cargoAnchor;
       const carried=!!attachment;
-      const pos=carried?handPose(item,ordinal):economy.itemLayout(item,ordinal);
+      const pos=carried?handPose(item,ordinal):
+        layout.itemPositions.get(item.id)??economy.itemLayout(item,ordinal);
       if(!carried && (
         container?.kind==='drop'||container?.kind==='yard'||
         (container?.kind==='crate'&&ordinal>=16)||
