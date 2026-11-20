@@ -22,6 +22,7 @@ import {calendarAt,ageResidents} from './world-calendar.js';
 import {WORLD_SAVE_KEY,serializeWorld,restoreWorld,hydrateWorldMirror} from './world-save.js';
 import {populationDay,livingSummary,isDependent,isLiving,populateFounders} from './generations.js';
 import {solidFootprints,indexSolids,planWalk,advanceWalk,clearSpawn,groundDropPosition,chooseCampPlot} from './spatial-world.js';
+import {VisualOccupancy,visualFixedFootprints} from './visual-occupancy.js';
 import {
   initCognition, observeNearby, chooseKnownResource, chooseExplorationTarget,
   learnOutcome, exchangeKnowledge, decision, knowledgeSummary, episode
@@ -119,6 +120,12 @@ class Diorama {
     this.shoreVisuals=createShoreVisuals(this.scene,terrainHeight,-.58);
     Diorama.lastStage='resources';
     this.addCamp();
+    // Every physically visible tuft uses the same occupancy as buildings,
+    // rocks, trees, the fire, storage and dropped objects.
+    this.decorOccupancy=new VisualOccupancy(visualFixedFootprints(sim));
+    this.decorRecords=[];
+    this.fixedConflictCount=this.decorOccupancy.fixedConflicts().length;
+    this.hiddenDecorations=0;
     this.treeModels=[];this.berryModels=[];this.saplingModels=[];
     this.boulderModels=[];this.fallenLogModels=[];
     this.addForest();this.addBerries();this.addSprings();
@@ -126,7 +133,9 @@ class Diorama {
     if(this.mobileGraphics)
       createTreeContactShadows(this.scene,terrainHeight,this.sim.trees);
     createTrampledCamp(this.scene,terrainHeight);
-    createGroundClutter(this.scene,terrainHeight,this.sim.trees);
+    createGroundClutter(this.scene,terrainHeight,this.sim.trees,
+      this.decorOccupancy,(mesh,index,matrix,x,z,radius)=>
+        this.recordDecoration(mesh,index,matrix,x,z,radius));
     this.addRocksAndGrass();this.addDeposits();this.addRain();
     Diorama.lastStage='physical-world';
     this.pathVisuals=new FootpathRenderer(this.scene,terrainHeight);
@@ -152,6 +161,9 @@ class Diorama {
         stockyardRelocations:this.inventoryVisuals.stockLayoutStats.relocatedContainers,
         groundItemsRelocated:this.inventoryVisuals.stockLayoutStats.relocatedItems,
         stockLayoutUnplaced:this.inventoryVisuals.stockLayoutStats.unplaced,
+        decorativeObjects:this.decorRecords.length,
+        hiddenDecorations:this.hiddenDecorations,
+        legacySolidConflicts:this.fixedConflictCount,
         drawCalls:this.renderer.info.render.calls,
         shadowMaps:this.renderer.shadowMap.enabled,
         shoreBands:this.shoreVisuals.children.length,
@@ -667,6 +679,7 @@ class Diorama {
       this.inventoryRefresh=0;
       this.inventoryVisuals.sync(this.sim.material,this.sim,this.controls.target);
       this.buildingVisuals.sync(this.sim.material,this.sim.construction);
+      this.refreshDecorClearance();
     }
     const actualHeat=this.sim.material.fire.heat;
     const lit=actualHeat>0;
