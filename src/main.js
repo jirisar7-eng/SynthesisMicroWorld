@@ -281,7 +281,10 @@ class Diorama {
     for(let i=0;i<11;i++){const a=i*Math.PI*2/11;const rock=this.mesh(new THREE.DodecahedronGeometry(.38,0),stonesMat,Math.cos(a)*1.2,y+.25,Math.sin(a)*1.2);rock.scale.set(1,.6,.8);this.scene.add(rock);}
     const fire=this.mesh(new THREE.ConeGeometry(.33,.8,5),new THREE.MeshStandardMaterial({color:'#f6b755',emissive:'#f48c36',emissiveIntensity:2}),0,y+.58,0,false);this.scene.add(fire);this.fire=fire;
     const light=new THREE.PointLight('#ffb463',2.3,11);light.position.set(0,y+1.2,0);this.scene.add(light);this.campLight=light;
-    for(const [x,z,r] of [[-2,1,.2],[1.9,-1.6,-.7]]){const log=this.mesh(new THREE.CylinderGeometry(.19,.19,2.1,7),this.mat('#866245'),x,y+.26,z);log.rotation.z=Math.PI/2;log.rotation.y=r;this.scene.add(log);}
+    // Do not fabricate decorative logs next to the campfire: real fallen logs
+    // and stored wood have authoritative IDs, quantities and positions.
+    // Previously these permanently visible fake logs overlapped stock and
+    // persisted even when the world held zero units of wood.
   }
   addForest(){
     const trunk=this.mat('#806148'),darkBark=this.mat('#76604b');
